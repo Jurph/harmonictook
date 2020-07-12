@@ -10,8 +10,8 @@ class Player(object):
         self.order = 0
         self.bank = 3  # start with 3 coins
         self.deck = []
-        self.deck.append(Green("wheat field"))
-        self.deck.append(Green("bakery"))
+        self.deck.append(WheatField)
+        self.deck.append(Bakery)
 
     def buy(self, Card):
         self.bank -= Card.cost
@@ -57,7 +57,12 @@ class WheatField(Green):
         self.payout = 1         # Payout can be any integer
         self.hits = [1]         # "Hits" can be one or more integers achievable on 2d6 
 
-
+class Bakery(Green):
+    def __init__(self):
+        self.name = "Bakery"
+        self.cost = 1
+        self.payout = 1
+        self.hits = [2, 3]
 
 class Red(Card):
     def __init__(self, name):
@@ -86,6 +91,9 @@ class Store(object):
 def main():
     playerlist = []
     playerlist.append(Player("jurph", 1))
+    somecards = playerlist[0].deck
+    for card in somecards:
+        print("{} has a {}".format(playerlist[0].name, str(card)))
     print("It works.")
 
 if __name__ == "__main__":
