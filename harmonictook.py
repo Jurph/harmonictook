@@ -10,8 +10,8 @@ class Player(object):
         self.order = 0
         self.bank = 3  # start with 3 coins
         self.deck = []
-        self.deck.append(WheatField)
-        self.deck.append(Bakery)
+        self.deck.append(WheatField())
+        self.deck.append(Bakery())
 
     def buy(self, Card):
         self.bank -= Card.cost
@@ -47,9 +47,14 @@ class Green(Card):
         self.target = 0         # Target can be 0 (bank), 1 (die roller), or 2 (each other player)
         self.recipient = 1      # Recipient can be 1 (die roller), 2 (each other player), or 3 (owner)
 
+    def __str__(self):
+        return super().__str__()
+
     def trigger(self, owner):   # Green cards increment the owner's bank by the payout
         owner.bank += self.payout
 
+# Maybe we just create a Green("wheat field", 1, 1, 1) ???
+# Its string and trigger() methods are identical to Green()...
 class WheatField(Green):
     def __init__(self):
         self.name = "Wheat Field"
@@ -57,12 +62,18 @@ class WheatField(Green):
         self.payout = 1         # Payout can be any integer
         self.hits = [1]         # "Hits" can be one or more integers achievable on 2d6 
 
+    def __str__(self):
+        return super().__str__()
+
 class Bakery(Green):
     def __init__(self):
         self.name = "Bakery"
         self.cost = 1
         self.payout = 1
         self.hits = [2, 3]
+    
+    def __str__(self):
+        return super().__str__()
 
 class Red(Card):
     def __init__(self, name):
@@ -93,7 +104,7 @@ def main():
     playerlist.append(Player("jurph", 1))
     somecards = playerlist[0].deck
     for card in somecards:
-        print("{} has a {}".format(playerlist[0].name, str(card)))
+        print("{} has a {}".format(playerlist[0].name, card))
     print("It works.")
 
 if __name__ == "__main__":
