@@ -10,7 +10,8 @@ class Player(object):
         self.order = 0
         self.bank = 3  # start with 3 coins
         self.deck = []
-        self.deck.append(Green("wheat field"), Green("bakery"))
+        self.deck.append(Green("wheat field"))
+        self.deck.append(Green("bakery"))
 
     def buy(self, Card):
         self.bank -= Card.cost
@@ -23,31 +24,40 @@ class Player(object):
         otherPlayer.deck.remove(otherCard)
 
 # Cards must have a name, cost, a target, a payout amount, and one or more die rolls on which they "hit"
-# Wheat Field costs 1, targets the die-roller, pays out 1, and hits on a 1.
-# Bakery costs 1, targets the bank, pays out 1 to the die-roller who owns it, and hits on a 2 or 3.
-# Cafe costs 2, targets the die-roller, pays out 1 to the owner, and hits on a 3.
 class Card(object):
     def __init__(self):
-        self.name = None
-        self.cost = 0
-        self.target = "Bank"
-        self.payout = 0
-        self.recipient = "Roller"
-        self.hits = [0]
+        self.name = None        # Name should be a string like "Wheat Field"
+        self.target = None      # Target can be 0 (bank), 1 (die roller), or 2 (each other player)
+        self.recipient = None   # Recipient can be 1 (die roller), 2 (each other player), or 3 (owner)
+        self.cost = 0           # Cost should be a non-zero integer 
+        self.payout = 0         # Payout can be any integer
+        self.hits = [0]         # "Hits" can be one or more integers achievable on 2d6 
+        self.owner = None       # Cards start with no owner 
 
-    def trigger(self, owner):
+    def trigger(self, owner):   # When triggered a card should interact with a player's bank
         owner.bank += self.payout
+                                # By default the card increments the owner's bank by the payout
 
-    def __str__(self):
+    def __str__(self):          # The string method, by default 
         return("[{}] {}".format(self.hits, self.name))
 
 class Green(Card):
     def __init__(self, name):
         self.name = name
+        self.target = 0         # Target can be 0 (bank), 1 (die roller), or 2 (each other player)
+        self.recipient = 1      # Recipient can be 1 (die roller), 2 (each other player), or 3 (owner)
 
-
-    def trigger(self, owner):
+    def trigger(self, owner):   # Green cards increment the owner's bank by the payout
         owner.bank += self.payout
+
+class WheatField(Green):
+    def __init__(self):
+        self.name = "Wheat Field"
+        self.cost = 1           # Cost should be a non-zero integer 
+        self.payout = 1         # Payout can be any integer
+        self.hits = [1]         # "Hits" can be one or more integers achievable on 2d6 
+
+
 
 class Red(Card):
     def __init__(self, name):
@@ -67,6 +77,10 @@ class Blue(Card):
 
     def trigger(self, owner):
         owner.bank += self.payout
+
+class Store(object):
+    def __init__(self):
+        self.deck = []
 
 
 def main():
