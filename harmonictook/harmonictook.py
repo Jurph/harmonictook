@@ -17,10 +17,25 @@ class Player(object):
         # Easy to overload operators for swapping stuff in and out 
         self.deck = PlayerDeck(self)
 
-    def buy(self, Card, availableCards):
-        self.bank -= Card.cost
-        Card.owner = self
-        self.deck.deck.append(Card)
+    def buy(self, name, availableCards):
+        card = None
+        for item in availableCards.deck:
+            if item.name == name:
+                card = item
+                break
+            else:
+                pass
+        if isinstance(card,Card):
+            if self.bank >= card.cost:
+                self.bank -= card.cost
+                card.owner = self
+                self.deck.append(card)
+                availableCards.deck.remove(card)
+                print("Bought a {} for {} coins. You now have {} coins.".format(card.name, card.cost, self.bank))
+            else:
+                print("Sorry: {} costs {} and you only have {}.".format(card.name, card.cost, self.bank))
+        else:
+            print("Sorry: we don't have any {}.".format(name))
         
     def swap(self, Card, otherPlayer, otherCard):
         Card.owner = otherPlayer
@@ -168,17 +183,21 @@ def main():
     # entities = ["the bank", "the player who rolled the dice", "the other players", "the card owner"]
     playerlist = []
     playerlist.append(Player("Jurph", 1))
+    jurph = playerlist[0]
     availableCards = TableDeck()
-    somecards = playerlist[0].deck.deck
-    print(str(somecards))
-    thiscard = somecards[0]
-    print("This is a {}. It costs {} and pays out {}.".format(thiscard.name, thiscard.cost, thiscard.payout))
+    for card in jurph.deck.deck:
+        print(card)
+    thiscard = jurph.deck.deck[0]
     print("Right now {} has {} coins.".format(playerlist[0].name, playerlist[0].bank))
     print("I just rolled a 1!")
     thiscard.trigger(thiscard.owner)
     print("Right now {} has {} coins.".format(playerlist[0].name, playerlist[0].bank))
-    for card in availableCards.deck:
-        print card
+    jurph.buy("Mine", availableCards)
+    jurph.buy("Duck", availableCards)
+    jurph.buy("Forest", availableCards)
+    for card in jurph.deck.deck:
+        print(card)
+
 
 if __name__ == "__main__":
     main()
