@@ -114,6 +114,11 @@ class Red(Card):
         self.recipient = 3      # Red cards pay to the card owner (3)
 
     def trigger(self, players):
+        for person in players:
+            if person.isrollingdice:
+                dieroller = person
+            else:
+                pass
         payout = dieroller.deduct(self.payout)
         self.owner.deposit(payout)
         
