@@ -8,7 +8,11 @@ class Player(object):
     def __init__(self, name = str, order = int):
         self.name = name
         self.order = 0
+        self.abilities = 0 
         self.bank = 3  # start with 3 coins
+        # TODO: consider whether a custom Deck() class might make more sense
+        # Easy to print a player's deck, print the store, etc. 
+        # Easy to overload operators for swapping stuff in and out 
         self.deck = []
         self.deck.append(Green("Wheat Field",1,1,[1]))
         self.deck.append(Green("Market",1,1,[2,3]))
@@ -27,6 +31,19 @@ class Player(object):
         self.deck.append(otherCard)
         self.deck.remove(Card)
         otherPlayer.deck.append(Card)
+
+    def improve(self, cost):
+        if cost == 4:
+            self.abilities += 1
+        elif cost == 10:
+            self.abilities += 2
+        elif cost == 16:
+            self.abilities += 4
+        elif cost == 22:
+            self.abilities += 8
+        else:
+            print("FATAL - tried to 'improve()' using a non standard cost")
+            exit()
 
 # Cards must have a name, cost, a payer, a payout amount, and one or more die rolls on which they "hit"
 class Card(object):
