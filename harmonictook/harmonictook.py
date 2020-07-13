@@ -5,11 +5,11 @@
 import math
 import random 
 
-
 class Player(object):
     def __init__(self, name = str, order = int):
         self.name = name
         self.order = 0
+        self.isrollingdice = False
         self.abilities = 0 
         self.bank = 3  # start with 3 coins
         # TODO: consider whether a custom Deck() class might make more sense
@@ -38,9 +38,9 @@ class Player(object):
                 pass
         if isinstance(card,Card):
             if self.bank >= card.cost:
-                self.bank -= card.cost
-                card.owner = self
+                self.deduct(card.cost)
                 self.deck.append(card)
+                card.owner = self
                 availableCards.deck.remove(card)
                 print("Bought a {} for {} coins. You now have {} coins.".format(card.name, card.cost, self.bank))
             else:
@@ -100,8 +100,8 @@ class Green(Card):
         self.payer = 0         # Green cards always pay out from the bank (0)
         self.recipient = 1     # Green cards always pay to the die roller (1)
 
-    def trigger(self, owner):   # Green cards increment the owner's bank by the payout
-        owner.deposit(self.payout)
+    def trigger(self, players):   # Green cards increment the owner's bank by the payout
+        self.owner.deposit(self.payout)
 
 class Red(Card):
     def __init__(self, name=str, category=int, cost=int, payout=int, hitsOn=list):
@@ -113,9 +113,9 @@ class Red(Card):
         self.payer = 1          # Red cards pay out from the die-roller (1) 
         self.recipient = 3      # Red cards pay to the card owner (3)
 
-    def trigger(self, owner, dieroller):
+    def trigger(self, players):
         payout = dieroller.deduct(self.payout)
-        owner.deposit(payout)
+        self.owner.deposit(payout)
         
 class Blue(Card):
     def __init__(self, name=str, category=int, cost=int, payout=int, hitsOn=list):
@@ -127,8 +127,8 @@ class Blue(Card):
         self.payer = 0          # Blue cards pay out fromm the bank (0)
         self.recipient = 3      # Blue cards pay out to the card owner (3)
 
-    def trigger(self, owner):
-        owner.deposit(self.payout)
+    def trigger(self, players):
+        self.owner.deposit(self.payout)
 
 class Stadium(Card):
     def __init__(self, name="Stadium"):
@@ -140,7 +140,12 @@ class Stadium(Card):
         self.payer = 2      # Stadium collects from all players
         self.payout = 2
     
-    def trigger(self, dieroller, players):
+    def trigger(self, players):
+        for person in players:
+            if person.isrollingdice:
+                dieroller = person
+            else:
+                pass
         for person in players:
             payment = person.deduct(self.payout)
             dieroller.deposit(payment)
@@ -155,7 +160,12 @@ class TVStation(Card):
         self.payer = 2          # TV Station collects from one player
         self.payout = 5
     
-    def trigger(self, dieroller, players):
+    def trigger(self, players):
+        for person in players:
+            if person.isrollingdice:
+                dieroller = person
+            else:
+                pass
         score = 0
         target = 0
         for person in players:
