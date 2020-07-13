@@ -17,6 +17,17 @@ class Player(object):
         # Easy to overload operators for swapping stuff in and out 
         self.deck = PlayerDeck(self)
 
+    def deduct(self, amount):
+        if self.bank >= amount:
+            deducted = amount
+        else:
+            deducted = self.bank
+        self.bank -= deducted
+        return deducted
+
+    def deposit(self, amount):
+        self.bank += amount
+
     def buy(self, name, availableCards):
         card = None
         for item in availableCards.deck:
@@ -62,7 +73,7 @@ class Player(object):
 class Card(object):
     def __init__(self):
         self.name = None        # Name should be a string like "Wheat Field"
-        self.payer = None       # Payer can be 0 (bank), 1 (die roller), or 2 (each other player)
+        self.payer = None       # Payer can be 0 (bank), 1 (die roller), 2 (each other player), 3 (owner), or 4 (specific player)
         self.recipient = None   # Recipient can be 1 (die roller), 2 (each other player), or 3 (owner)
         self.cost = 0           # Cost should be a non-zero integer 
         self.payout = 0         # Payout can be any integer
@@ -89,9 +100,8 @@ class Green(Card):
         self.payer = 0         # Green cards always pay out from the bank (0)
         self.recipient = 1     # Green cards always pay to the die roller (1)
 
-
     def trigger(self, owner):   # Green cards increment the owner's bank by the payout
-        owner.bank += self.payout
+        owner.deposit(self.payout)
 
 class Red(Card):
     def __init__(self, name=str, category=int, cost=int, payout=int, hitsOn=list):
@@ -104,13 +114,9 @@ class Red(Card):
         self.recipient = 3      # Red cards pay to the card owner (3)
 
     def trigger(self, owner, dieroller):
-        if dieroller.bank >= self.payout:
-            dieroller.bank -= self.payout
-            owner.bank += self.payout
-        elif dieroller.bank < self.payout:
-            owner.bank += dieroller.bank
-            dieroller.bank = 0
-
+        payout = dieroller.deduct(self.payout)
+        owner.deposit(payout)
+        
 class Blue(Card):
     def __init__(self, name=str, category=int, cost=int, payout=int, hitsOn=list):
         self.name = name
@@ -122,7 +128,49 @@ class Blue(Card):
         self.recipient = 3      # Blue cards pay out to the card owner (3)
 
     def trigger(self, owner):
-        owner.bank += self.payout
+        owner.deposit(self.payout)
+
+class Stadium(Card):
+    def __init__(self, name="Stadium"):
+        self.name = name
+        self.category = 7
+        self.cost = 6
+        self.recipient = 3      # Purple cards pay out to the die-roller (1)
+        self.hitsOn = [6]       # Purple cards all hit on [6]
+        self.payer = 2      # Stadium collects from all players
+        self.payout = 2
+    
+    def trigger(self, dieroller, players):
+        for person in players:
+            payment = person.deduct(self.payout)
+            dieroller.deposit(payment)
+
+class TVStation(Card):
+    def __init__(self, name="TV Station"):
+        self.name = name
+        self.category = 7
+        self.cost = 7
+        self.recipient = 1      # Purple cards pay out to the die-roller (1)
+        self.hitsOn = [6]       # Purple cards all hit on [6]
+        self.payer = 2          # TV Station collects from one player
+        self.payout = 5
+    
+    def trigger(self, dieroller, players):
+        score = 0
+        target = 0
+        for person in players:
+            if person == dieroller:
+                pass
+            if person.bank() < self.payout:
+                pass
+            else:
+                if person.abilities > score:
+                    target = person
+                    score = person.abilities
+                else:
+                    pass
+        payment = target.deduct(self.payout)
+        dieroller.deposit(payment)
 
 class Store(object):
     def __init__(self):
@@ -146,7 +194,7 @@ class PlayerDeck(Store):
         self.owner = owner
         # TODO: don't repeat yourself - define these in one place and insert them from there
         self.deck.append(Blue("Wheat Field",1,1,1,[1]))
-        self.deck.append(Green("Market",2,1,1,[2,3]))
+        self.deck.append(Green("Bakery",2,1,1,[2,3]))
         for card in self.deck:
             card.owner = self.owner
 
@@ -193,7 +241,7 @@ def main():
     dieroll = 1
     for card in jurph.deck.deck:
         if dieroll in card.hitsOn:
-            card.trigger(card.owner) # TODO: integrate a die roll and choose the correct card based on payout
+            card.trigger(card.owner) # TODO: integrate order of parsing
     print("Right now {} has {} coins.".format(playerlist[0].name, playerlist[0].bank))
     jurph.buy("Mine", availableCards)
     jurph.buy("Duck", availableCards)

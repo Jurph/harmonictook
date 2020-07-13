@@ -3,6 +3,8 @@ Harmonic Took is a multiplayer city building game that might remind you of other
 # TODO: 
 - Split off runTests() away from main() 
 - Implement Purple(Card) class and its three members
+- Implement card.trigger() to take a list of players
+- Store player info about ownership/turn in a boolean
 - Implement payout multipliers for cheese and furniture factories
 - Implement payout modifiers for the Shopping Mall (orange card) 
 - Implement display of a player's current spread 
