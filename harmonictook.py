@@ -4,6 +4,7 @@
 import math
 import random 
 
+
 class Player(object):
     def __init__(self, name = str, order = int):
         self.name = name
@@ -13,11 +14,7 @@ class Player(object):
         # TODO: consider whether a custom Deck() class might make more sense
         # Easy to print a player's deck, print the store, etc. 
         # Easy to overload operators for swapping stuff in and out 
-        self.deck = []
-        self.deck.append(Green("Wheat Field",1,1,[1]))
-        self.deck.append(Green("Market",1,1,[2,3]))
-        for card in self.deck:
-            card.owner = self
+        self.deck = PlayerDeck(self)
 
     def buy(self, Card):
         self.bank -= Card.cost
@@ -97,14 +94,30 @@ class Store(object):
     def __init__(self):
         self.deck = []
 
+class PlayerDeck(Store):
+    def __init__(self, owner):
+        self.deck = []
+        self.owner = owner
+        self.deck.append(Green("Wheat Field",1,1,[1]))
+        self.deck.append(Green("Market",1,1,[2,3]))
+        for card in self.deck:
+            card.owner = self.owner
+
+    def __str__(self):
+        decktext = ""
+        for card in self.deck(sorted):
+            if isinstance(card, (Red, Green, Blue)):
+                decktext += "{} - {}\n".format(card.hitsOn, card.name)
+            else:
+                decktext += str(card)
+        return decktext
 
 def main():
     # entities = ["the bank", "the player who rolled the dice", "the other players", "the card owner"]
     playerlist = []
     playerlist.append(Player("Jurph", 1))
-    somecards = playerlist[0].deck
-    for card in somecards:
-        print("{} has a {}".format(playerlist[0].name, card.name))
+    somecards = playerlist[0].deck.deck
+    print(str(somecards))
     thiscard = somecards[0]
     print("This is a {}. It costs {} and pays out {}.".format(thiscard.name, thiscard.cost, thiscard.payout))
     print("Right now {} has {} coins.".format(playerlist[0].name, playerlist[0].bank))
