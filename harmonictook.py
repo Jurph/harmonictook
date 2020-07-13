@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# -*- coding: UTF-8 -*-
 # harmonictook.py - Main game file
 
 import math
@@ -63,8 +64,7 @@ class Card(object):
     # TODO: card.helptext goes here - potentially adding info to __str__ 
 
 class Green(Card):
-    def __init__(self, name=str, category, cost=int, payout=int, multiplies, hitsOn=list):
-        Card.__init__(self)
+    def __init__(self, name=str, category=int, cost=int, payout=int, hitsOn=list, multiplies=int):
         self.name = name
         self.category = category
         self.cost = cost
@@ -79,12 +79,11 @@ class Green(Card):
         owner.bank += self.payout
 
 class Red(Card):
-    def __init__(self, name=str, category, cost=int, payout=int, multiplies, hitsOn=list):
+    def __init__(self, name=str, category=int, cost=int, payout=int, hitsOn=list):
         self.name = name
         self.category = category
         self.cost = cost
         self.payout = payout
-        self.multiplies = multiplies
         self.hitsOn = hitsOn
         self.payer = 1          # Red cards pay out from the die-roller (1) 
         self.recipient = 3      # Red cards pay to the card owner (3)
@@ -98,12 +97,11 @@ class Red(Card):
             dieroller.bank = 0
 
 class Blue(Card):
-    def __init__(self, name=str, category, cost=int, payout=int, multiplies, hitsOn=list):
+    def __init__(self, name=str, category=int, cost=int, payout=int, hitsOn=list):
         self.name = name
         self.category = category
         self.cost = cost
         self.payout = payout
-        self.multiplies = multiplies
         self.hitsOn = hitsOn
         self.payer = 0          # Blue cards pay out fromm the bank (0)
         self.recipient = 3      # Blue cards pay out to the card owner (3)
@@ -131,8 +129,9 @@ class PlayerDeck(Store):
     def __init__(self, owner):
         self.deck = []
         self.owner = owner
-        self.deck.append(Blue("Wheat Field",1,1,[1]))
-        self.deck.append(Green("Market",1,1,[2,3]))
+        # TODO: don't repeat yourself - define these in one place and insert them from there
+        self.deck.append(Blue("Wheat Field",1,1,1,[1]))
+        self.deck.append(Green("Market",2,1,1,[2,3]))
         for card in self.deck:
             card.owner = self.owner
 
@@ -151,18 +150,18 @@ class TableDeck(Store):
         categories = {1:"🌽", 2:"🐄", 3:"🏪", 4:"☕", 5:"⚙️", 6:"🏭", 7:"🗼", 8:"🍎"}
         for _ in range(0,6):
             # Add six of every card: Name, category, cost, payout, multiplies, hitsOn[]
-            self.append(Blue("Wheat Field",1,1,1,None,[1]))
-            self.append(Blue("Ranch",2,1,1,None,[2]))
-            self.append(Green("Bakery",3,1,1,None,[2,3]))
-            self.append(Red("Cafe",4,2,1,None,[3]))
-            self.append(Green("Convenience Store",3,2,3,None,[4]))
-            self.append(Blue("Forest",5,3,1,None,[5]))
-            self.append(Green("Cheese Factory",6,5,3,1,[7]))
-            self.append(Green("Furniture Factory",6,3,3,5,[8]))
-            self.append(Blue("Mine",5,6,5,None,[9]))
-            self.append(Red("Family Restaurant",4,3,2,None,[9,10]))
-            self.append(Blue("Apple Orchard",1,3,3,None,[10]))
-            self.append(Green("Fruit and Vegetable Market",8,2,2,None,[11,12]))
+            self.append(Blue("Wheat Field",1,1,1,[1]))
+            self.append(Blue("Ranch",2,1,1,[2]))
+            self.append(Green("Bakery",3,1,1,[2,3]))
+            self.append(Red("Cafe",4,2,1,[3]))
+            self.append(Green("Convenience Store",3,2,3,[4]))
+            self.append(Blue("Forest",5,3,1,[5]))
+            self.append(Green("Cheese Factory",6,5,3,[7],1))
+            self.append(Green("Furniture Factory",6,3,3,[8],5))
+            self.append(Blue("Mine",5,6,5,[9]))
+            self.append(Red("Family Restaurant",4,3,2,[9,10]))
+            self.append(Blue("Apple Orchard",1,3,3,[10]))
+            self.append(Green("Fruit and Vegetable Market",8,2,2,[11,12]))
         self.deck.sort()
 
 def main():
