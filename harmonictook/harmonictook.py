@@ -33,9 +33,9 @@ class Player(object):
                 availableCards.deck.remove(card)
                 print("Bought a {} for {} coins. You now have {} coins.".format(card.name, card.cost, self.bank))
             else:
-                print("Sorry: {} costs {} and you only have {}.".format(card.name, card.cost, self.bank))
+                print("Sorry: a {} costs {} and you only have {}.".format(card.name, card.cost, self.bank))
         else:
-            print("Sorry: we don't have any {}.".format(name))
+            print("Sorry: we don't have anything called '{}'.".format(name))
         
     def swap(self, Card, otherPlayer, otherCard):
         Card.owner = otherPlayer
@@ -73,8 +73,8 @@ class Card(object):
 
     def __str__(self):          # The string method, by default, for all cards  
     # TODO: figure out which scope this list belongs in for card display
-        categories = {1:"🌽", 2:"🐄", 3:"🏪", 4:"☕", 5:"⚙️", 6:"🏭", 7:"🗼", 8:"🍎"}
-        return("{} {} : {}".format(str(self.hitsOn), categories[int(self.category)], str(self.name)))
+        categories = {1:"🌽", 2:"🐄", 3:"🏪", 4:"☕", 5:"⚙️ ", 6:"🏭", 7:"🗼", 8:"🍎"}
+        return("{:8} {:4} : {}".format(str(self.hitsOn), categories[int(self.category)], str(self.name)))
 
     # TODO: card.helptext goes here - potentially adding info to __str__ 
 
@@ -190,7 +190,10 @@ def main():
     thiscard = jurph.deck.deck[0]
     print("Right now {} has {} coins.".format(playerlist[0].name, playerlist[0].bank))
     print("I just rolled a 1!")
-    thiscard.trigger(thiscard.owner)
+    dieroll = 1
+    for card in jurph.deck.deck:
+        if dieroll in card.hitsOn:
+            card.trigger(card.owner) # TODO: integrate a die roll and choose the correct card based on payout
     print("Right now {} has {} coins.".format(playerlist[0].name, playerlist[0].bank))
     jurph.buy("Mine", availableCards)
     jurph.buy("Duck", availableCards)
