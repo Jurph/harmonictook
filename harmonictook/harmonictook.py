@@ -87,6 +87,7 @@ class Human(Player): # TODO : make this more robust - type checking etc.
                 decided = True     
             else:
                 print("Sorry: {} isn't a valid choice.".format(guess))
+        return variable
 
 class Bot(Player):
     def choose(self, variable, options=list):
@@ -359,11 +360,13 @@ class TableDeck(Store):
         # self.deck.sort() 
         # TODO: define a custom Store.deck.sort() method that doesn't exhaust the recursion depth.
 
-def nextTurn(playerlist, player):
+def nextTurn(playerlist, player, availableCards):
     # Reset the turn counter
     for person in playerlist:
         person.isrollingdice = False
     player.isrollingdice = True
+
+    # Die Rolling Phase 
     dieroll = player.dieroll(1) # TODO: let the player choose
     print("{} rolled a {}.".format(player.name, dieroll))
     for person in playerlist:
@@ -371,8 +374,15 @@ def nextTurn(playerlist, player):
             if dieroll in card.hitsOn:
                 print("{}'s {} activates on a {}...".format(person.name, card.name, dieroll))
                 card.trigger(playerlist) # TODO: integrate order of parsing
+
+    # Buy Phase 
     for person in playerlist:
         print("{} now has {} coins.".format(person.name, person.bank))
+    cardnames = []
+    for card in availableCards.deck: # TODO: make this a property of availableCards
+        cardnames.append(card.name)
+    cardname = player.choose(card, cardnames)
+    player.buy(cardname, availableCards)
 
 def main():
     # Right now this is a set of integration tests... 
@@ -413,7 +423,7 @@ def main():
     for card in steve.deck.deck:
         print(card)
     for person in playerlist:
-        nextTurn(playerlist, person)
+        nextTurn(playerlist, person, availableCards)
 
 if __name__ == "__main__":
     main()
