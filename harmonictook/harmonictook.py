@@ -10,12 +10,12 @@ class Player(object):
         self.name = name
         self.order = 0
         self.isrollingdice = False
-        self.abilities = 0 
-        self.bank = 3  # start with 3 coins
-        # TODO: consider whether a custom Deck() class might make more sense
-        # Easy to print a player's deck, print the store, etc. 
-        # Easy to overload operators for swapping stuff in and out 
+        self.abilities = 0
+        self.bank = 3                  # Everyone starts with 3 coins
         self.deck = PlayerDeck(self)
+
+    def deposit(self, amount):
+        self.bank += amount
 
     def deduct(self, amount):
         if self.bank >= amount:
@@ -24,9 +24,6 @@ class Player(object):
             deducted = self.bank
         self.bank -= deducted
         return deducted
-
-    def deposit(self, amount):
-        self.bank += amount
 
     def buy(self, name, availableCards):
         card = None
@@ -101,7 +98,18 @@ class Green(Card):
         self.recipient = 1     # Green cards always pay to the die roller (1)
 
     def trigger(self, players):   # Green cards increment the owner's bank by the payout
-        self.owner.deposit(self.payout)
+        subtotal = 0
+        if isinstance(self.multiplies, None):
+            self.owner.deposit(self.payout)
+        else:
+            for card in self.owner.deck.deck:
+                if card.category == self.multiplies:
+                    subtotal += 1
+                else:
+                    pass
+            amount = self.payout * subtotal
+            self.owner.deposit(amount)
+
 
 class Red(Card):
     def __init__(self, name=str, category=int, cost=int, payout=int, hitsOn=list):
