@@ -162,16 +162,22 @@ class Green(Card):
 
     def trigger(self, players):   # Green cards increment the owner's bank by the payout
         subtotal = 0
-        if self.multiplies == None:
-            self.owner.deposit(self.payout)
+        if self.owner.isrollingdice:
+            if self.multiplies:
+                self.owner.deposit(self.payout)
+                print("{} pays out {} to {}.".format(self.name, self.payout, self.owner.name))
+            else:
+                for card in self.owner.deck.deck:
+                    if card.category == self.multiplies:
+                        subtotal += 1
+                    else:
+                        pass
+                print("{} has {} {} cards...".format(self.owner.name, subtotal, self.multiplies))
+                amount = self.payout * subtotal
+                print("{} pays out {} to {}.".format(self.name, amount, self.owner.name))
+                self.owner.deposit(amount)
         else:
-            for card in self.owner.deck.deck:
-                if card.category == self.multiplies:
-                    subtotal += 1
-                else:
-                    pass
-            amount = self.payout * subtotal
-            self.owner.deposit(amount)
+            print("{} didn't roll the dice - no payout.".format(self.owner.name))
 
 
 class Red(Card):
@@ -204,6 +210,7 @@ class Blue(Card):
         self.recipient = 3      # Blue cards pay out to the card owner (3)
 
     def trigger(self, players):
+        print("{} pays out {} to {}.".format(self.name, self.payout, self.owner.name))
         self.owner.deposit(self.payout)
 
 class Stadium(Card):
@@ -382,7 +389,8 @@ def main():
     for person in playerlist:
         for card in person.deck.deck:
             if dieroll in card.hitsOn:
-                card.trigger(playerlist) # TODO: integrate order of parsing        
+                print("{}'s {} activates on a {}...".format(person.name, card.name, dieroll))
+                card.trigger(playerlist) # TODO: integrate order of parsing
     for person in playerlist:
         print("{} now has {} coins.".format(person.name, person.bank))
 
