@@ -15,6 +15,7 @@ Harmonic Took is a multiplayer city building game that might remind you of other
 
 - Turns/Player mechanics
     - Add player improvements to player.dieroll()
+    - Add two simple AIs (buys randomly, buys based on expected value)
 
 - Orange Cards:
     - Implement payout modifiers for the Shopping Mall (orange card) 
