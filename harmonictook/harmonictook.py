@@ -173,6 +173,7 @@ class Green(Card):
             amount = self.payout * subtotal
             self.owner.deposit(amount)
 
+
 class Red(Card):
     def __init__(self, name=str, category=int, cost=int, payout=int, hitsOn=list):
         self.name = name
@@ -363,7 +364,8 @@ def main():
     print("-=-=-=-=-=-")
     playerlist.append(Player("Steve", 2))
     steve = playerlist[1]
-    steve.deposit(20)
+    steve.deposit(10)
+    jurph.deposit(10)
     steve.buy("Forest", availableCards)
     steve.buy("Ranch", availableCards)
     steve.buy("Convenience Store", availableCards)  
@@ -373,6 +375,16 @@ def main():
     steve.buy("Ranch", availableCards)
     for card in steve.deck.deck:
         print(card)
+    for person in playerlist:
+        person.isrollingdice = False
+    dieroll = steve.dieroll(1)
+    print("{} rolled a {}.".format(steve.name, dieroll))
+    for person in playerlist:
+        for card in person.deck.deck:
+            if dieroll in card.hitsOn:
+                card.trigger(playerlist) # TODO: integrate order of parsing        
+    for person in playerlist:
+        print("{} now has {} coins.".format(person.name, person.bank))
 
 if __name__ == "__main__":
     main()
