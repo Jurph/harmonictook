@@ -302,7 +302,7 @@ class PlayerDeck(Store):
 
     def __str__(self):
         decktext = ""
-        for card in self.deck(sorted):
+        for card in self.deck:
             if isinstance(card, (Red, Green, Blue)):
                 decktext += "{} - {}\n".format(card.hitsOn, card.name)
             else:
@@ -357,7 +357,6 @@ def main():
     # TODO: pretty-print the decks in a useful format 
     for card in jurph.deck.deck:
         print(card)
-
 
 if __name__ == "__main__":
     main()
