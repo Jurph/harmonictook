@@ -14,6 +14,16 @@ class Player(object):
         self.bank = 3                  # Everyone starts with 3 coins
         self.deck = PlayerDeck(self)
 
+    def dieroll(self, dice):
+        self.isrollingdice = True
+        # TODO: integrate with self.abilities (Booleans?) to allow/block 2 dice
+        if dice == 1:
+            return random.randint(1,6)
+        elif dice == 2:
+            return random.randint(1,6) + random.randint(1,6)
+        else:
+            print("Sorry: you can only roll up to two dice")
+
     def deposit(self, amount):
         self.bank += amount
 
@@ -55,13 +65,13 @@ class Player(object):
 
     def improve(self, cost):
         if cost == 4:
-            self.abilities += 1
+            self.abilities += 1 # Can roll two dice 
         elif cost == 10:
-            self.abilities += 2
+            self.abilities += 2 # Shops (3) and Cups (4) pay out +1 
         elif cost == 16:
-            self.abilities += 4
+            self.abilities += 4 # Doubles grant a second turn 
         elif cost == 22:
-            self.abilities += 8
+            self.abilities += 8 # Can re-roll (player's choice)
         else:
             print("FATAL - tried to 'improve()' using a non standard cost")
             exit()
@@ -99,7 +109,7 @@ class Green(Card):
 
     def trigger(self, players):   # Green cards increment the owner's bank by the payout
         subtotal = 0
-        if isinstance(self.multiplies, None):
+        if self.multiplies == None:
             self.owner.deposit(self.payout)
         else:
             for card in self.owner.deck.deck:
@@ -217,7 +227,7 @@ class PlayerDeck(Store):
         self.owner = owner
         # TODO: don't repeat yourself - define these in one place and insert them from there
         self.deck.append(Blue("Wheat Field",1,1,1,[1]))
-        self.deck.append(Green("Bakery",2,1,1,[2,3]))
+        self.deck.append(Green("Bakery",3,1,1,[2,3]))
         for card in self.deck:
             card.owner = self.owner
 
@@ -251,6 +261,7 @@ class TableDeck(Store):
         self.deck.sort()
 
 def main():
+    # Right now this is a set of integration tests... 
     # entities = ["the bank", "the player who rolled the dice", "the other players", "the card owner"]
     playerlist = []
     playerlist.append(Player("Jurph", 1))
@@ -258,10 +269,10 @@ def main():
     availableCards = TableDeck()
     for card in jurph.deck.deck:
         print(card)
-    thiscard = jurph.deck.deck[0]
+    # thiscard = jurph.deck.deck[0]
     print("Right now {} has {} coins.".format(playerlist[0].name, playerlist[0].bank))
-    print("I just rolled a 1!")
-    dieroll = 1
+    dieroll = jurph.dieroll(1)
+    print("{} rolled a {}...".format(playerlist[0].name, dieroll))
     for card in jurph.deck.deck:
         if dieroll in card.hitsOn:
             card.trigger(card.owner) # TODO: integrate order of parsing
@@ -269,9 +280,11 @@ def main():
     jurph.buy("Mine", availableCards)
     jurph.buy("Duck", availableCards)
     jurph.buy("Forest", availableCards)
+    jurph.buy("Ranch", availableCards)
+    # TODO: pretty-print the decks in a useful format 
     for card in jurph.deck.deck:
         print(card)
-
+    
 
 if __name__ == "__main__":
     main()
