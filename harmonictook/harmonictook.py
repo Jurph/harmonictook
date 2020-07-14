@@ -1,9 +1,10 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # -*- coding: UTF-8 -*-
 # harmonictook.py - Main game file
 
 import math
-import random 
+import random
+import statistics
 
 class Player(object):
     def __init__(self, name = str, order = int):
@@ -89,6 +90,54 @@ class Card(object):
         self.category = None    # Categories from the list below  
         self.multiplies = None  # Also categories 
 
+    def sortvalue(self):
+        from statistics import mean
+        value = 0.000
+        value += mean(self.hitsOn)   # Sort by mean hit value 
+        value += self.cost/100                  # Then by cost
+        value += ord(str(self.name)[0])/255     # Then by pseudo-alphabetical 
+        return value
+
+    def __eq__(self, other):
+        if self.name == other.name:
+            return True
+        elif str(self) == str(other):
+            return True
+        else:
+            return False
+    
+    def __ne__(self, other):
+        if self.name == other.name:
+            return False
+        elif str(self) == str(other):
+            return False
+        else:
+            return True
+
+    def __lt__(self, other):
+        if self.sortvalue < other.sortvalue:
+            return True
+        else:
+            return False
+    
+    def __le__(self, other):
+        if self.sortvalue <= other.sortvalue:
+            return True
+        else:
+            return False
+    
+    def __gt__(self, other):
+        if self.sortvalue > other.sortvalue:
+            return True
+        else:
+            return False
+
+    def __ge__(self, other):
+        if self.sortvalue >= other.sortvalue:
+            return True
+        else:
+            return False
+
     def __str__(self):          # The string method, by default, for all cards  
     # TODO: figure out which scope this list belongs in for card display
         categories = {1:"🌽", 2:"🐄", 3:"🏪", 4:"☕", 5:"⚙️ ", 6:"🏭", 7:"🗼", 8:"🍎"}
@@ -119,7 +168,6 @@ class Green(Card):
                     pass
             amount = self.payout * subtotal
             self.owner.deposit(amount)
-
 
 class Red(Card):
     def __init__(self, name=str, category=int, cost=int, payout=int, hitsOn=list):
@@ -160,7 +208,7 @@ class Stadium(Card):
         self.cost = 6
         self.recipient = 3      # Purple cards pay out to the die-roller (1)
         self.hitsOn = [6]       # Purple cards all hit on [6]
-        self.payer = 2      # Stadium collects from all players
+        self.payer = 2          # Stadium collects from all players
         self.payout = 2
     
     def trigger(self, players):
@@ -180,7 +228,7 @@ class TVStation(Card):
         self.cost = 7
         self.recipient = 1      # Purple cards pay out to the die-roller (1)
         self.hitsOn = [6]       # Purple cards all hit on [6]
-        self.payer = 2          # TV Station collects from one player
+        self.payer = 4          # TV Station collects from one player
         self.payout = 5
     
     def trigger(self, players):
@@ -192,6 +240,7 @@ class TVStation(Card):
         score = 0
         target = 0
         for person in players:
+
             if person == dieroller:
                 pass
             if person.bank() < self.payout:
@@ -204,6 +253,23 @@ class TVStation(Card):
                     pass
         payment = target.deduct(self.payout)
         dieroller.deposit(payment)
+
+class BusinessCenter(Card):
+    def __init__(self, name="Business Center"):
+        self.name = name
+        self.category = 7
+        self.cost = 8
+        self.recipient = 3      # Purple cards pay out to the die-roller (1)
+        self.hitsOn = [6]       # Purple cards all hit on [6]
+        self.payer = 4          # Business Center collects from one targeted player (4)
+        self.payout = 0         # Payout is the ability to swap cards (!)
+    
+    def trigger(self, players):
+        for person in players:
+            if person.isrollingdice:
+                dieroller = person
+        print("Swapping cards is not implemented just yet. Here's five bucks, kid.")
+        dieroller.deposit(5)
 
 class Store(object):
     def __init__(self):
@@ -220,6 +286,9 @@ class Store(object):
             self.deck.remove(card)
         else:
             TypeError()
+
+    def sort(self):
+        return
 
 class PlayerDeck(Store):
     def __init__(self, owner):
@@ -252,13 +321,17 @@ class TableDeck(Store):
             self.append(Red("Cafe",4,2,1,[3]))
             self.append(Green("Convenience Store",3,2,3,[4]))
             self.append(Blue("Forest",5,3,1,[5]))
+            self.append(TVStation())
+            self.append(BusinessCenter())
+            self.append(Stadium())
             self.append(Green("Cheese Factory",6,5,3,[7],1))
             self.append(Green("Furniture Factory",6,3,3,[8],5))
             self.append(Blue("Mine",5,6,5,[9]))
             self.append(Red("Family Restaurant",4,3,2,[9,10]))
             self.append(Blue("Apple Orchard",1,3,3,[10]))
             self.append(Green("Fruit and Vegetable Market",8,2,2,[11,12]))
-        self.deck.sort()
+        # self.deck.sort() 
+        # TODO: define a custom Store.deck.sort() method that doesn't exhaust the recursion depth.
 
 def main():
     # Right now this is a set of integration tests... 
@@ -284,7 +357,7 @@ def main():
     # TODO: pretty-print the decks in a useful format 
     for card in jurph.deck.deck:
         print(card)
-    
+
 
 if __name__ == "__main__":
     main()
