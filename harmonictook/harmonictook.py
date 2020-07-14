@@ -7,7 +7,7 @@ import random
 import statistics
 
 class Player(object):
-    def __init__(self, name = str, order = int):
+    def __init__(self, name = "Player"):
         self.name = name
         self.order = 0
         self.isrollingdice = False
@@ -76,6 +76,21 @@ class Player(object):
         else:
             print("FATAL - tried to 'improve()' using a non standard cost")
             exit()
+
+class Human(Player): # TODO : make this more robust - type checking etc. 
+    def choose(self, variable, options=list):
+        decided = False
+        while not decided:
+            guess = input()
+            if guess in options:
+                variable = guess
+                decided = True     
+            else:
+                print("Sorry: {} isn't a valid choice.".format(guess))
+
+class Bot(Player):
+    def choose(self, variable, options=list):
+        variable = random.choice(options)
 
 # Cards must have a name, cost, a payer, a payout amount, and one or more die rolls on which they "hit"
 class Card(object):
@@ -150,7 +165,7 @@ class Card(object):
     # TODO: card.helptext goes here - potentially adding info to __str__ 
 
 class Green(Card):
-    def __init__(self, name=str, category=int, cost=int, payout=int, hitsOn=list, multiplies=int):
+    def __init__(self, name=str, category=int, cost=int, payout=int, hitsOn=list, multiplies=None):
         self.name = name
         self.category = category
         self.cost = cost
@@ -163,7 +178,7 @@ class Green(Card):
     def trigger(self, players):   # Green cards increment the owner's bank by the payout
         subtotal = 0
         if self.owner.isrollingdice:
-            if self.multiplies:
+            if not self.multiplies: # TODO: check this
                 self.owner.deposit(self.payout)
                 print("{} pays out {} to {}.".format(self.name, self.payout, self.owner.name))
             else:
@@ -325,7 +340,7 @@ class TableDeck(Store):
         self.deck = []
         categories = {1:"🌽", 2:"🐄", 3:"🏪", 4:"☕", 5:"⚙️", 6:"🏭", 7:"🗼", 8:"🍎"}
         for _ in range(0,6):
-            # Add six of every card: Name, category, cost, payout, multiplies, hitsOn[]
+            # Add six of every card: Name, category, cost, payout, hitsOn[], and optionally, what it multiplies
             self.append(Blue("Wheat Field",1,1,1,[1]))
             self.append(Blue("Ranch",2,1,1,[2]))
             self.append(Green("Bakery",3,1,1,[2,3]))
@@ -335,20 +350,35 @@ class TableDeck(Store):
             self.append(TVStation())
             self.append(BusinessCenter())
             self.append(Stadium())
-            self.append(Green("Cheese Factory",6,5,3,[7],1))
+            self.append(Green("Cheese Factory",6,5,3,[7],2))
             self.append(Green("Furniture Factory",6,3,3,[8],5))
             self.append(Blue("Mine",5,6,5,[9]))
             self.append(Red("Family Restaurant",4,3,2,[9,10]))
             self.append(Blue("Apple Orchard",1,3,3,[10]))
-            self.append(Green("Fruit and Vegetable Market",8,2,2,[11,12]))
+            self.append(Green("Fruit and Vegetable Market",8,2,2,[11,12],1))
         # self.deck.sort() 
         # TODO: define a custom Store.deck.sort() method that doesn't exhaust the recursion depth.
+
+def nextTurn(playerlist, player):
+    # Reset the turn counter
+    for person in playerlist:
+        person.isrollingdice = False
+    player.isrollingdice = True
+    dieroll = player.dieroll(1) # TODO: let the player choose
+    print("{} rolled a {}.".format(player.name, dieroll))
+    for person in playerlist:
+        for card in person.deck.deck:
+            if dieroll in card.hitsOn:
+                print("{}'s {} activates on a {}...".format(person.name, card.name, dieroll))
+                card.trigger(playerlist) # TODO: integrate order of parsing
+    for person in playerlist:
+        print("{} now has {} coins.".format(person.name, person.bank))
 
 def main():
     # Right now this is a set of integration tests... 
     # entities = ["the bank", "the player who rolled the dice", "the other players", "the card owner"]
     playerlist = []
-    playerlist.append(Player("Jurph", 1))
+    playerlist.append(Human("Jurph"))
     jurph = playerlist[0]
     availableCards = TableDeck()
     for card in jurph.deck.deck:
@@ -369,7 +399,7 @@ def main():
     for card in jurph.deck.deck:
         print(card)
     print("-=-=-=-=-=-")
-    playerlist.append(Player("Steve", 2))
+    playerlist.append(Bot("Steve"))
     steve = playerlist[1]
     steve.deposit(10)
     jurph.deposit(10)
@@ -383,16 +413,7 @@ def main():
     for card in steve.deck.deck:
         print(card)
     for person in playerlist:
-        person.isrollingdice = False
-    dieroll = steve.dieroll(1)
-    print("{} rolled a {}.".format(steve.name, dieroll))
-    for person in playerlist:
-        for card in person.deck.deck:
-            if dieroll in card.hitsOn:
-                print("{}'s {} activates on a {}...".format(person.name, card.name, dieroll))
-                card.trigger(playerlist) # TODO: integrate order of parsing
-    for person in playerlist:
-        print("{} now has {} coins.".format(person.name, person.bank))
+        nextTurn(playerlist, person)
 
 if __name__ == "__main__":
     main()
