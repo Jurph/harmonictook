@@ -138,10 +138,14 @@ class Card(object):
         else:
             return False
 
-    def __str__(self):          # The string method, by default, for all cards  
-    # TODO: figure out which scope this list belongs in for card display
+    def __str__(self):  
+        # TODO: figure out which scope this list belongs in for card display
         categories = {1:"🌽", 2:"🐄", 3:"🏪", 4:"☕", 5:"⚙️ ", 6:"🏭", 7:"🗼", 8:"🍎"}
-        return("{:8} {:4} : {}".format(str(self.hitsOn), categories[int(self.category)], str(self.name)))
+        # WARNING: In Unicode, the "gear" emoji is decorated with U+FE0F, an invisible zero-space
+        # codepoint. Its full name is 'U+2699 U+FE0F'. Calls to format() double-count it when 
+        # trying to do fixed width. Adding a space for padding and telling format() to display it
+        # as single-width seems to work. There probably are other solutions, but this one works.
+        return("{:8} {:1} : {}".format(str(self.hitsOn), categories[int(self.category)], str(self.name)))
 
     # TODO: card.helptext goes here - potentially adding info to __str__ 
 
@@ -287,8 +291,15 @@ class Store(object):
         else:
             TypeError()
 
-    def sort(self):
-        return
+    def sorted(self):
+        blank = Card()
+        for i in range(0, len(self.deck)):
+            for j in range(0, len(self.deck)-1):
+                if self.deck[j].sortvalue() > self.deck[j+1].sortvalue():
+                    blank = self.deck[j]
+                    self.deck[j] = self.deck[j+1]
+                    self.deck[j+1] = blank
+        return self.deck
 
 class PlayerDeck(Store):
     def __init__(self, owner):
@@ -354,9 +365,11 @@ def main():
     jurph.buy("Duck", availableCards)
     jurph.buy("Forest", availableCards)
     jurph.buy("Ranch", availableCards)
+    jurph.deck = jurph.deck.sorted()
     # TODO: pretty-print the decks in a useful format 
-    for card in jurph.deck.deck:
+    for card in jurph.deck:
         print(card)
+    
 
 if __name__ == "__main__":
     main()
