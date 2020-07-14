@@ -50,9 +50,9 @@ class Player(object):
                 self.deck.append(card)
                 card.owner = self
                 availableCards.deck.remove(card)
-                print("Bought a {} for {} coins. You now have {} coins.".format(card.name, card.cost, self.bank))
+                print("{} bought a {} for {} coins, and now has {} coins.".format(self.name, card.name, card.cost, self.bank))
             else:
-                print("Sorry: a {} costs {} and you only have {}.".format(card.name, card.cost, self.bank))
+                print("Sorry: a {} costs {} and {} only has {}.".format(card.name, card.cost, self.name, self.bank))
         else:
             print("Sorry: we don't have anything called '{}'.".format(name))
         
@@ -115,25 +115,25 @@ class Card(object):
             return True
 
     def __lt__(self, other):
-        if self.sortvalue < other.sortvalue:
+        if self.sortvalue() < other.sortvalue():
             return True
         else:
             return False
     
     def __le__(self, other):
-        if self.sortvalue <= other.sortvalue:
+        if self.sortvalue() <= other.sortvalue():
             return True
         else:
             return False
     
     def __gt__(self, other):
-        if self.sortvalue > other.sortvalue:
+        if self.sortvalue() > other.sortvalue():
             return True
         else:
             return False
 
     def __ge__(self, other):
-        if self.sortvalue >= other.sortvalue:
+        if self.sortvalue() >= other.sortvalue():
             return True
         else:
             return False
@@ -282,24 +282,16 @@ class Store(object):
     def append(self, card):
         if isinstance(card, Card):
             self.deck.append(card)
+            self.deck.sort()
         else:
             TypeError()
 
     def remove(self, card):
         if isinstance(card, Card):
             self.deck.remove(card)
+            self.deck.sort()
         else:
             TypeError()
-
-    def sorted(self):
-        blank = Card()
-        for i in range(0, len(self.deck)):
-            for j in range(0, len(self.deck)-1):
-                if self.deck[j].sortvalue() > self.deck[j+1].sortvalue():
-                    blank = self.deck[j]
-                    self.deck[j] = self.deck[j+1]
-                    self.deck[j+1] = blank
-        return self.deck
 
 class PlayerDeck(Store):
     def __init__(self, owner):
@@ -365,11 +357,22 @@ def main():
     jurph.buy("Duck", availableCards)
     jurph.buy("Forest", availableCards)
     jurph.buy("Ranch", availableCards)
-    jurph.deck = jurph.deck.sorted()
     # TODO: pretty-print the decks in a useful format 
-    for card in jurph.deck:
+    for card in jurph.deck.deck:
         print(card)
-    
+    print("-=-=-=-=-=-")
+    playerlist.append(Player("Steve", 2))
+    steve = playerlist[1]
+    steve.deposit(20)
+    steve.buy("Forest", availableCards)
+    steve.buy("Ranch", availableCards)
+    steve.buy("Convenience Store", availableCards)  
+    steve.buy("Cheese Factory", availableCards)
+    steve.buy("Bakery", availableCards)
+    steve.buy("Cafe", availableCards)
+    steve.buy("Ranch", availableCards)
+    for card in steve.deck.deck:
+        print(card)
 
 if __name__ == "__main__":
     main()
