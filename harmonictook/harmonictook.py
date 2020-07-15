@@ -374,6 +374,8 @@ def nextTurn(playerlist, player, availableCards):
     for person in playerlist:
         print("{} now has {} coins.".format(person.name, person.bank))
     options = availableCards.names(maxcost=player.bank)
+    for card in player.deck.deck:
+        print(card)
     cardname = player.choose(card, options)
     player.buy(cardname, availableCards)
 
@@ -406,15 +408,6 @@ def main():
     steve = playerlist[1]
     steve.deposit(10)
     jurph.deposit(10)
-    steve.buy("Forest", availableCards)
-    steve.buy("Ranch", availableCards)
-    steve.buy("Convenience Store", availableCards)  
-    steve.buy("Cheese Factory", availableCards)
-    steve.buy("Bakery", availableCards)
-    steve.buy("Cafe", availableCards)
-    steve.buy("Ranch", availableCards)
-    for card in steve.deck.deck:
-        print(card)
     while True:
         for person in playerlist:
             nextTurn(playerlist, person, availableCards)
