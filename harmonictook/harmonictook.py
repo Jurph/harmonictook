@@ -94,8 +94,12 @@ class Human(Player): # TODO : make this more robust - type checking etc.
 
 class Bot(Player):
     def choose(self, variable, options=list):
-        variable = random.choice(options)
-        return variable
+        if len(options) == 0:
+            print("Oh no - no valid purchase options this turn.")
+            return None
+        else:
+            variable = random.choice(options)
+            return variable
 
 # Cards must have a name, cost, a payer, a payout amount, and one or more die rolls on which they "hit"
 class Card(object):
@@ -156,12 +160,16 @@ class Card(object):
 
     def __str__(self):  
         # TODO: figure out which scope this list belongs in for card display
-        categories = {1:"🌽", 2:"🐄", 3:"🏪", 4:"☕", 5:"⚙️ ", 6:"🏭", 7:"🗼", 8:"🍎"}
+        categories = {1:"|🌽|", 2:"|🐄|", 3:"|🏪|", 4:"|☕|", 5:"|⚙️| ", 6:"|🏭|", 7:"|🗼|", 8:"|🍎|"}
         # WARNING: In Unicode, the "gear" emoji is decorated with U+FE0F, an invisible zero-space
         # codepoint. Its full name is 'U+2699 U+FE0F'. Calls to format() double-count it when 
         # trying to do fixed width. Adding a space for padding and telling format() to display it
         # as single-width seems to work. There probably are other solutions, but this one works.
-        return("{:8} {:1} : {}".format(str(self.hitsOn), categories[self.category], str(self.name)))
+        catvalue = self.category
+        cardstring = "{:8} {:4} : {}".format(str(self.hitsOn), categories[catvalue], self.name)
+        # print("DEBUG: category for {} was {}".format(self.name, self.category))
+        # print("DEBUG: emoji lookup for category {} results in {:4}".format(catvalue, categories[catvalue]))
+        return cardstring
 
     # TODO: card.helptext goes here - potentially adding info to __str__ 
 
@@ -331,7 +339,7 @@ class PlayerDeck(Store):
 class TableDeck(Store):
     def __init__(self):
         self.deck = []
-        categories = {1:"🌽", 2:"🐄", 3:"🏪", 4:"☕", 5:"⚙️", 6:"🏭", 7:"🗼", 8:"🍎"}
+        # categories = {1:"🌽", 2:"🐄", 3:"🏪", 4:"☕", 5:"⚙️", 6:"🏭", 7:"🗼", 8:"🍎"}
         for _ in range(0,6):
             # Add six of every card: Name, category, cost, payout, hitsOn[], and optionally, what it multiplies
             self.append(Blue("Wheat Field",1,1,1,[1]))
