@@ -80,6 +80,9 @@ class Player(object):
 class Human(Player): # TODO : make this more robust - type checking etc. 
     def choose(self, variable, options=list):
         decided = False
+        if len(options) == 0:
+            print("Oh no - no valid purchase options this turn.")
+            return None
         while not decided:
             guess = input("Human player {}, enter your choice: ".format(self.name))
             if guess in options:
@@ -158,7 +161,7 @@ class Card(object):
         # codepoint. Its full name is 'U+2699 U+FE0F'. Calls to format() double-count it when 
         # trying to do fixed width. Adding a space for padding and telling format() to display it
         # as single-width seems to work. There probably are other solutions, but this one works.
-        return("{:8} {:1} : {}".format(str(self.hitsOn), categories[int(self.category)], str(self.name)))
+        return("{:8} {:1} : {}".format(str(self.hitsOn), categories[self.category], str(self.name)))
 
     # TODO: card.helptext goes here - potentially adding info to __str__ 
 
@@ -282,8 +285,11 @@ class BusinessCenter(Card):
         for person in players:
             if person.isrollingdice:
                 dieroller = person
-        print("Swapping cards is not implemented just yet. Here's five bucks, kid.")
-        dieroller.deposit(5)
+        if self.owner == dieroller:
+            print("Swapping cards is not implemented just yet. Here's five bucks, kid.")
+            dieroller.deposit(5)
+        else:
+            print("No payout.")
 
 class Store(object):
     def __init__(self):
@@ -354,6 +360,17 @@ class TableDeck(Store):
                 pass
         return namelist
 
+def newGame():
+    playerlist = []
+    availableCards = TableDeck()
+    human = Human("Jurph")
+    playerlist.append(human)
+    bot1 = Bot("Steve Uno")
+    playerlist.append(bot1)
+    bot2 = Bot("Jessica Dos")
+    playerlist.append(bot2)
+    return availableCards, playerlist
+
 def nextTurn(playerlist, player, availableCards):
     # Reset the turn counter
     for person in playerlist:
@@ -379,7 +396,7 @@ def nextTurn(playerlist, player, availableCards):
     cardname = player.choose(card, options)
     player.buy(cardname, availableCards)
 
-def main():
+def functionalTest():
     # Right now this is a set of integration tests... 
     # entities = ["the bank", "the player who rolled the dice", "the other players", "the card owner"]
     playerlist = []
@@ -404,10 +421,11 @@ def main():
     for card in jurph.deck.deck:
         print(card)
     print("-=-=-=-=-=-")
-    playerlist.append(Bot("Steve"))
-    steve = playerlist[1]
-    steve.deposit(10)
-    jurph.deposit(10)
+
+def main():
+    # Right now this is a set of integration tests... 
+    # entities = ["the bank", "the player who rolled the dice", "the other players", "the card owner"]
+    availableCards, playerlist = newGame()
     while True:
         for person in playerlist:
             nextTurn(playerlist, person, availableCards)
