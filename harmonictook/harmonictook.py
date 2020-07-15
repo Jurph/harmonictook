@@ -262,19 +262,9 @@ class TVStation(Card):
                 dieroller = person
             else:
                 pass
-        score = 0
-        target = 0
-        for person in players:
-            if person == dieroller:
-                pass
-            if person.bank < self.payout:
-                pass
-            else:
-                if person.abilities > score:
-                    target = person
-                    score = person.abilities
-                else:
-                    pass
+        target = random.choice(players)
+        while target.isrollingdice:
+            target = random.choice(players)
         payment = target.deduct(self.payout)
         dieroller.deposit(payment)
 
