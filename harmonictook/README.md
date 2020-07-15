@@ -2,6 +2,7 @@ Harmonic Took is a multiplayer city building game that might remind you of other
 
 # TODO: 
 - Fix bug where card symbols don't correctly display
+- Make better use of dict() structures to do lookups 
 
 - Testing
     - Add unit testing
