@@ -81,7 +81,7 @@ class Human(Player): # TODO : make this more robust - type checking etc.
     def choose(self, variable, options=list):
         decided = False
         while not decided:
-            guess = input()
+            guess = input("Human player {}, enter your choice: ".format(self.name))
             if guess in options:
                 variable = guess
                 decided = True     
@@ -92,6 +92,7 @@ class Human(Player): # TODO : make this more robust - type checking etc.
 class Bot(Player):
     def choose(self, variable, options=list):
         variable = random.choice(options)
+        return variable
 
 # Cards must have a name, cost, a payer, a payout amount, and one or more die rolls on which they "hit"
 class Card(object):
@@ -115,17 +116,13 @@ class Card(object):
         return value
 
     def __eq__(self, other):
-        if self.name == other.name:
-            return True
-        elif str(self) == str(other):
+        if self.sortvalue() == other.sortvalue():
             return True
         else:
             return False
     
     def __ne__(self, other):
-        if self.name == other.name:
-            return False
-        elif str(self) == str(other):
+        if self.sortvalue() == other.sortvalue():
             return False
         else:
             return True
@@ -268,10 +265,9 @@ class TVStation(Card):
         score = 0
         target = 0
         for person in players:
-
             if person == dieroller:
                 pass
-            if person.bank() < self.payout:
+            if person.bank < self.payout:
                 pass
             else:
                 if person.abilities > score:
@@ -357,8 +353,16 @@ class TableDeck(Store):
             self.append(Red("Family Restaurant",4,3,2,[9,10]))
             self.append(Blue("Apple Orchard",1,3,3,[10]))
             self.append(Green("Fruit and Vegetable Market",8,2,2,[11,12],1))
-        # self.deck.sort() 
-        # TODO: define a custom Store.deck.sort() method that doesn't exhaust the recursion depth.
+        self.deck.sort() 
+        
+    def names(self, maxcost=99, flavor=Card): # A de-duplicated list of the available names
+        namelist = []
+        for card in self.deck:
+            if (card.name not in namelist) and isinstance(card, flavor) and (card.cost <= maxcost): # TODO: target hitsOn?
+                namelist.append(card.name)
+            else:
+                pass
+        return namelist
 
 def nextTurn(playerlist, player, availableCards):
     # Reset the turn counter
@@ -367,6 +371,7 @@ def nextTurn(playerlist, player, availableCards):
     player.isrollingdice = True
 
     # Die Rolling Phase 
+    print("-=-=-= It's {}'s turn =-=-=-".format(player.name))
     dieroll = player.dieroll(1) # TODO: let the player choose
     print("{} rolled a {}.".format(player.name, dieroll))
     for person in playerlist:
@@ -378,10 +383,8 @@ def nextTurn(playerlist, player, availableCards):
     # Buy Phase 
     for person in playerlist:
         print("{} now has {} coins.".format(person.name, person.bank))
-    cardnames = []
-    for card in availableCards.deck: # TODO: make this a property of availableCards
-        cardnames.append(card.name)
-    cardname = player.choose(card, cardnames)
+    options = availableCards.names(maxcost=player.bank)
+    cardname = player.choose(card, options)
     player.buy(cardname, availableCards)
 
 def main():
@@ -422,8 +425,9 @@ def main():
     steve.buy("Ranch", availableCards)
     for card in steve.deck.deck:
         print(card)
-    for person in playerlist:
-        nextTurn(playerlist, person, availableCards)
+    while True:
+        for person in playerlist:
+            nextTurn(playerlist, person, availableCards)
 
 if __name__ == "__main__":
     main()
