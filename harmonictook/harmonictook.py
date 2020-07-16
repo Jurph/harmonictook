@@ -431,12 +431,10 @@ def functionalTest():
     print("-=-=-=-=-=-")
 
 def main():
-    # Right now this is a set of integration tests... 
-    # entities = ["the bank", "the player who rolled the dice", "the other players", "the card owner"]
     availableCards, playerlist = newGame()
     while True:
-        for person in playerlist:
-            nextTurn(playerlist, person, availableCards)
+        for turntaker in playerlist:
+            nextTurn(playerlist, turntaker, availableCards)
 
 if __name__ == "__main__":
     main()
