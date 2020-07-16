@@ -39,7 +39,7 @@ class Player(object):
     def buy(self, name, availableCards):
         card = None
         for item in availableCards.deck:
-            if item.name == name:
+            if item.name.lower() == name.lower():
                 card = item
                 break
             else:
@@ -402,7 +402,8 @@ def nextTurn(playerlist, player, availableCards):
     for card in player.deck.deck:
         print(card)
     cardname = player.choose(card, options)
-    player.buy(cardname, availableCards)
+    if cardname != None:
+        player.buy(cardname, availableCards)
 
 def functionalTest():
     # Right now this is a set of integration tests... 
