@@ -39,7 +39,7 @@ class Player(object):
     def buy(self, name, availableCards):
         card = None
         for item in availableCards.deck:
-            if item.name == name:
+            if item.name.lower() == name.lower():
                 card = item
                 break
             else:
@@ -368,15 +368,37 @@ class TableDeck(Store):
                 pass
         return namelist
 
-def newGame():
+
+def setPlayers():
     playerlist = []
+    moreplayers = True
+    while moreplayers:
+        humanorbot = input("Add a [H]uman or add a [B]ot? ")
+        if "h" in humanorbot.lower():
+            playername = input("What's the human's name? ")            
+            playerlist.append(Human(name=str(playername)))
+        elif "b" in humanorbot.lower():
+            playername = input("What's the bot's name? ")
+            playerlist.append(Bot(name=str(playername)))
+        else:
+            print("Sorry, I couldn't find an H or B in your answer. ")
+        if len(playerlist) == 4:
+            break
+        elif len(playerlist) >= 2:
+            yesorno = input("Add another player? ([Y]es / [N]o) ")
+            if "y" in yesorno.lower():
+                pass
+            elif "n" in yesorno.lower():
+                moreplayers = False
+                break
+            else:
+                print("Sorry, I couldn't find a Y or N in your answer. ")
+    return playerlist
+        
+
+def newGame():
     availableCards = TableDeck()
-    human = Human("Jurph")
-    playerlist.append(human)
-    bot1 = Bot("Steve Uno")
-    playerlist.append(bot1)
-    bot2 = Bot("Jessica Dos")
-    playerlist.append(bot2)
+    playerlist = setPlayers()
     return availableCards, playerlist
 
 def nextTurn(playerlist, player, availableCards):
@@ -402,7 +424,8 @@ def nextTurn(playerlist, player, availableCards):
     for card in player.deck.deck:
         print(card)
     cardname = player.choose(card, options)
-    player.buy(cardname, availableCards)
+    if cardname != None:
+        player.buy(cardname, availableCards)
 
 def functionalTest():
     # Right now this is a set of integration tests... 
