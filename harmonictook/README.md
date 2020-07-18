@@ -1,11 +1,11 @@
 Harmonic Took is a multiplayer city building game that might remind you of other multiplayer city building card games you might have played. But it's not that game! It's not really multiplayer, and it's not complete, and it doesn't include all of the fun stuff the game includes because -- let's be realistic -- I am probably not going to finish this project. 
 
 # What?
-`h a r m o n i c t o o k`
-`t h m o r o n i c o a k`
-`m o o n c r o a k i t h`
-`t h i n k o r a c o o n`
-`n o t m a c h i k o r o`
+`h a r m o n i c t o o k`   
+`t h m o r o n i c o a k`   
+`m o o n c r o a k i t h`   
+`t h i n k o r a c o o n`   
+`n o t m a c h i k o r o`   
 
 # TODO: 
 
@@ -15,9 +15,7 @@ Harmonic Took is a multiplayer city building game that might remind you of other
     - Add unit testing
 
 - Display
-    - Create a Display() class 
-    - Implement display of a player's current spread 
-    - Implement display of what a player might want to buy
+    - Create a Display() class [partial]
     - Add ANSI-style colored text (orange, red, green, blue, purple) for rich display
     - BUG: emoji don't correctly display in Windows terminals
 
