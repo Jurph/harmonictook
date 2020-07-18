@@ -169,7 +169,7 @@ class Card(object):
         # trying to do fixed width. Adding a space for padding and telling format() to display it
         # as single-width seems to work. There probably are other solutions, but this one works.
         catvalue = self.category
-        cardstring = "{:8} {:4} : {:16}".format(str(self.hitsOn), categories[catvalue], self.name)
+        cardstring = "{:7} {:3} : {:16}".format(str(self.hitsOn), categories[catvalue], self.name)
         # print("DEBUG: category for {} was {}".format(self.name, self.category))
         # print("DEBUG: emoji lookup for category {} results in {:4}".format(catvalue, categories[catvalue]))
         return cardstring
