@@ -444,8 +444,10 @@ def nextTurn(playerlist, player, availableCards):
     # Buy Phase 
     for person in playerlist:
         print("{} now has {} coins.".format(person.name, person.bank))
-    options = availableCards.names(maxcost=player.bank)
+    print("-=-=-={}'s Deck=-=-=-".format(player.name))
     display(player.deck)
+    options = availableCards.names(maxcost=player.bank)
+    print("Valid choices are: {}".format(options))
     cardname = player.choose(card, options)
     if cardname != None:
         player.buy(cardname, availableCards)
