@@ -158,6 +158,9 @@ class Card(object):
         else:
             return False
 
+    def __hash__(self):
+        return hash((self.name, self.category, self.cost))
+
     def __str__(self):  
         # TODO: figure out which scope this list belongs in for card display
         categories = {1:"|🌽|", 2:"|🐄|", 3:"|🏪|", 4:"|☕|", 5:"|⚙️| ", 6:"|🏭|", 7:"|🗼|", 8:"|🍎|"}
@@ -166,7 +169,7 @@ class Card(object):
         # trying to do fixed width. Adding a space for padding and telling format() to display it
         # as single-width seems to work. There probably are other solutions, but this one works.
         catvalue = self.category
-        cardstring = "{:8} {:4} : {}".format(str(self.hitsOn), categories[catvalue], self.name)
+        cardstring = "{:8} {:4} : {:16}".format(str(self.hitsOn), categories[catvalue], self.name)
         # print("DEBUG: category for {} was {}".format(self.name, self.category))
         # print("DEBUG: emoji lookup for category {} results in {:4}".format(catvalue, categories[catvalue]))
         return cardstring
@@ -202,7 +205,6 @@ class Green(Card):
                 self.owner.deposit(amount)
         else:
             print("{} didn't roll the dice - no payout.".format(self.owner.name))
-
 
 class Red(Card):
     def __init__(self, name=str, category=int, cost=int, payout=int, hitsOn=list):
@@ -299,9 +301,21 @@ class BusinessCenter(Card):
         else:
             print("No payout.")
 
+# "Stores" are just Decks, which are themselves wrappers for a deck[] list and a few functions
 class Store(object):
     def __init__(self):
         self.deck = []
+        self.frequencies = {}
+
+    def freq(self):
+        f = {}
+        for card in self.deck:
+            if f.get(card):
+                f[card] += 1
+            else:
+                f[card] = 1
+        self.frequencies = f
+        return self.frequencies
 
     def append(self, card):
         if isinstance(card, Card):
@@ -320,6 +334,7 @@ class Store(object):
 class PlayerDeck(Store):
     def __init__(self, owner):
         self.deck = []
+        self.frequencies = {}
         self.owner = owner
         # TODO: don't repeat yourself - define these in one place and insert them from there
         self.deck.append(Blue("Wheat Field",1,1,1,[1]))
@@ -339,6 +354,7 @@ class PlayerDeck(Store):
 class TableDeck(Store):
     def __init__(self):
         self.deck = []
+        self.frequencies = {}
         # categories = {1:"🌽", 2:"🐄", 3:"🏪", 4:"☕", 5:"⚙️", 6:"🏭", 7:"🗼", 8:"🍎"}
         for _ in range(0,6):
             # Add six of every card: Name, category, cost, payout, hitsOn[], and optionally, what it multiplies
@@ -368,7 +384,6 @@ class TableDeck(Store):
                 pass
         return namelist
 
-
 def setPlayers():
     playerlist = []
     moreplayers = True
@@ -394,7 +409,16 @@ def setPlayers():
             else:
                 print("Sorry, I couldn't find a Y or N in your answer. ")
     return playerlist
-        
+
+def display(deckObject):
+    f = deckObject.freq()
+    rowstring = ""
+    for card, quantity in f.items():
+        rowstring += "{:16}".format((str(card) + "|"))
+        for _ in range(quantity):
+            rowstring += "[]"
+        rowstring += str(quantity) + "\n"
+    print(rowstring)
 
 def newGame():
     availableCards = TableDeck()
@@ -421,8 +445,7 @@ def nextTurn(playerlist, player, availableCards):
     for person in playerlist:
         print("{} now has {} coins.".format(person.name, person.bank))
     options = availableCards.names(maxcost=player.bank)
-    for card in player.deck.deck:
-        print(card)
+    display(player.deck)
     cardname = player.choose(card, options)
     if cardname != None:
         player.buy(cardname, availableCards)
