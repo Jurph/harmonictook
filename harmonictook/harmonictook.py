@@ -14,6 +14,10 @@ class Player(object):
         self.abilities = 0
         self.bank = 3                  # Everyone starts with 3 coins
         self.deck = PlayerDeck(self)
+        self.hasTrainStation = False
+        self.hasShoppingMall = False
+        self.hasAmusementPark = False
+        self.hasRadioTower = False
 
     def dieroll(self, dice):
         self.isrollingdice = True
@@ -38,24 +42,50 @@ class Player(object):
 
     def buy(self, name, availableCards):
         card = None
+        specials = self.checkRemainingSpecials
+        # Check if the name passed in is on the card list or specials list
         for item in availableCards.deck:
             if item.name.lower() == name.lower():
                 card = item
                 break
             else:
                 pass
-        if isinstance(card,Card):
+        for item in specials:
+            if item.name.lower() == name.lower():
+                card = item
+                break
+            else:
+                pass
+        if isinstance(card, Card):
             if self.bank >= card.cost:
                 self.deduct(card.cost)
                 self.deck.append(card)
                 card.owner = self
-                availableCards.deck.remove(card)
                 print("{} bought a {} for {} coins, and now has {} coins.".format(self.name, card.name, card.cost, self.bank))
             else:
                 print("Sorry: a {} costs {} and {} only has {}.".format(card.name, card.cost, self.name, self.bank))
+                return
+        if isinstance(card,(Red, Green, Blue, TVStation, Stadium, BusinessCenter)):
+            availableCards.deck.remove(card)            
+        elif isinstance(card, SpecialCard):
+            specials.remove(card)
+            card.bestowPower() # TODO: write setSpecialFlag()
         else:
             print("Sorry: we don't have anything called '{}'.".format(name))
-        
+
+    def checkRemainingSpecials():
+        specials = []
+        #TODO these should actually be SpecialCard() objects
+        if not self.hasTrainStation:
+            specials.append("Train Station")
+        if not self.hasShoppingMall:
+            specials.append("Shopping Mall")
+        if not self.hasAmusementPark:
+            specials.append("Amusement Park")
+        if not self.hasRadioTower:
+            specials.append("Radio Tower")
+        return specials
+
     def swap(self, Card, otherPlayer, otherCard):
         Card.owner = otherPlayer
         otherCard.owner = self
@@ -63,19 +93,6 @@ class Player(object):
         self.deck.append(otherCard)
         self.deck.remove(Card)
         otherPlayer.deck.append(Card)
-
-    def improve(self, cost):
-        if cost == 4:
-            self.abilities += 1 # Can roll two dice 
-        elif cost == 10:
-            self.abilities += 2 # Shops (3) and Cups (4) pay out +1 
-        elif cost == 16:
-            self.abilities += 4 # Doubles grant a second turn 
-        elif cost == 22:
-            self.abilities += 8 # Can re-roll (player's choice)
-        else:
-            print("FATAL - tried to 'improve()' using a non standard cost")
-            exit()
 
 class Human(Player): # TODO : make this more robust - type checking etc. 
     def choose(self, variable, options=list):
@@ -301,6 +318,24 @@ class BusinessCenter(Card):
         else:
             print("No payout.")
 
+class SpecialCard(Card):
+    def __init__(self, name):
+        orangeCards = {
+            "Train Station" : [4, 7, "hasTrainStation"],
+            "Shopping Mall" : [10, 7, "hasShoppingMall"],
+            "Amusement Park" : [16, 7, "hasAmusementPark"],
+            "Radio Tower" : [22, 7, "hasRadioTower"]
+        }
+        self.name = name
+        self.cost = orangeCards[name][0]
+        self.category = orangeCards[name][1]
+        self.owner = None
+
+    def bestowPower(self):
+        setattr(self.owner, self.orangeCards[self.name][2], True)
+        print("DEBUG: bestowed a Special Power!!")
+        print("{} now {}".format(self.owner.name, self.orangeCards[self.name][2]))
+
 # "Stores" are just Decks, which are themselves wrappers for a deck[] list and a few functions
 class Store(object):
     def __init__(self):
@@ -350,13 +385,7 @@ class PlayerDeck(Store):
             else:
                 decktext += str(card)
         return decktext
-
-    def hasClass(self, classname)
-        hasClass = False
-        for card in self.deck:
-            if isinstance(card, classname)
             
-
 class TableDeck(Store):
     def __init__(self):
         self.deck = []
@@ -370,15 +399,15 @@ class TableDeck(Store):
             self.append(Red("Cafe",4,2,1,[3]))
             self.append(Green("Convenience Store",3,2,3,[4]))
             self.append(Blue("Forest",5,3,1,[5]))
-            self.append(TVStation())
-            self.append(BusinessCenter())
-            self.append(Stadium())
             self.append(Green("Cheese Factory",6,5,3,[7],2))
             self.append(Green("Furniture Factory",6,3,3,[8],5))
             self.append(Blue("Mine",5,6,5,[9]))
             self.append(Red("Family Restaurant",4,3,2,[9,10]))
             self.append(Blue("Apple Orchard",1,3,3,[10]))
             self.append(Green("Fruit and Vegetable Market",8,2,2,[11,12],1))
+        self.append(TVStation())
+        self.append(BusinessCenter())
+        self.append(Stadium())
         self.deck.sort() 
         
     def names(self, maxcost=99, flavor=Card): # A de-duplicated list of the available names
@@ -389,6 +418,17 @@ class TableDeck(Store):
             else:
                 pass
         return namelist
+
+# The Special Deck will exist behind the scenes and replenish the TableDeck
+class SpecialDeck(Store):
+    def __init__(self, players):
+        self.deck = []
+        self.frequencies = {}
+        for _ in range(0, players):
+            self.append(TVStation())
+            self.append(BusinessCenter())
+            self.append(Stadium())
+        self.deck.sort()
 
 def setPlayers():
     playerlist = []
