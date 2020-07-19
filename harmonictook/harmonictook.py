@@ -351,6 +351,12 @@ class PlayerDeck(Store):
                 decktext += str(card)
         return decktext
 
+    def hasClass(self, classname)
+        hasClass = False
+        for card in self.deck:
+            if isinstance(card, classname)
+            
+
 class TableDeck(Store):
     def __init__(self):
         self.deck = []
