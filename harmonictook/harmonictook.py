@@ -109,7 +109,7 @@ class Player(object):
         otherPlayer.deck.append(Card)
 
 class Human(Player): # TODO : make this more robust - type checking etc. 
-    def choose(self, variable, options=list):
+    def chooseCard(self, variable, options=list):
         decided = False
         if len(options) == 0:
             print("Oh no - no valid purchase options this turn.")
@@ -124,7 +124,7 @@ class Human(Player): # TODO : make this more robust - type checking etc.
         return variable
 
 class Bot(Player):
-    def choose(self, variable, options=list):
+    def chooseCard(self, variable, options=list):
         if len(options) == 0:
             print("Oh no - no valid purchase options this turn.")
             return None
@@ -334,15 +334,16 @@ class BusinessCenter(Card):
 
 class SpecialCard(Card):
     def __init__(self, name):
-        orangeCards = {
+        # TODO: perfect example of when to do @class attribs, I think 
+        self.orangeCards = {
             "Train Station" : [4, 7, "hasTrainStation"],
             "Shopping Mall" : [10, 7, "hasShoppingMall"],
             "Amusement Park" : [16, 7, "hasAmusementPark"],
             "Radio Tower" : [22, 7, "hasRadioTower"]
         }
         self.name = name
-        self.cost = orangeCards[name][0]
-        self.category = orangeCards[name][1]
+        self.cost = self.orangeCards[name][0]
+        self.category = self.orangeCards[name][1]
         self.owner = None
 
     def bestowPower(self):
@@ -350,7 +351,7 @@ class SpecialCard(Card):
         print("DEBUG: bestowed a Special Power!!")
         print("{} now {}".format(self.owner.name, self.orangeCards[self.name][2]))
 
-# "Stores" are just Decks, which are themselves wrappers for a deck[] list and a few functions
+# "Stores" are wrappers for a deck[] list and a few functions; decks hold Card objects
 class Store(object):
     def __init__(self):
         self.deck = []
@@ -508,7 +509,7 @@ def nextTurn(playerlist, player, availableCards):
     display(player.deck)
     options = availableCards.names(maxcost=player.bank)
     print("Valid choices are: {}".format(options))
-    cardname = player.choose(card, options)
+    cardname = player.chooseCard(card, options)
     if cardname != None:
         player.buy(cardname, availableCards)
 
