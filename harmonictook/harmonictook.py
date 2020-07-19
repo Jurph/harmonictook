@@ -504,7 +504,7 @@ def nextTurn(playerlist, player, availableCards):
 
     # Die Rolling Phase 
     print("-=-=-= It's {}'s turn =-=-=-".format(player.name))
-    dieroll = player.dieroll(1) # TODO: let the player choose
+    dieroll = player.dieroll()
     print("{} rolled a {}.".format(player.name, dieroll))
     for person in playerlist:
         for card in person.deck.deck:
