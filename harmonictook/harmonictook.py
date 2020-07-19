@@ -21,13 +21,27 @@ class Player(object):
 
     def dieroll(self, dice):
         self.isrollingdice = True
-        # TODO: integrate with self.abilities (Booleans?) to allow/block 2 dice
+        if self.hasTrainStation:
+            chosen = False
+            while not chosen:
+                if isinstance(self, Human):
+                    dice = input("Roll [1] or [2] dice?")
+                    if isinstance(dice, int) and dice > 0 and dice < 3:
+                        chosen = True
+                    else:
+                        print("Sorry: You can only enter a 1 or 2. Rolling {} dice is not permitted.".format(dice))
+                elif isinstance(self, Bot):
+                    chosen = True
+                    dice = 2 # TODO split this logic out into Human and Bot classes and just pass in the integer. This is gross. 
+        else:
+            pass
+
         if dice == 1:
             return random.randint(1,6)
         elif dice == 2:
             return random.randint(1,6) + random.randint(1,6)
         else:
-            print("Sorry: you can only roll up to two dice")
+            return 7
 
     def deposit(self, amount):
         self.bank += amount
@@ -42,7 +56,7 @@ class Player(object):
 
     def buy(self, name, availableCards):
         card = None
-        specials = self.checkRemainingSpecials
+        specials = self.checkRemainingSpecials()
         # Check if the name passed in is on the card list or specials list
         for item in availableCards.deck:
             if item.name.lower() == name.lower():
@@ -73,17 +87,17 @@ class Player(object):
         else:
             print("Sorry: we don't have anything called '{}'.".format(name))
 
-    def checkRemainingSpecials():
+    def checkRemainingSpecials(self):
         specials = []
-        #TODO these should actually be SpecialCard() objects
+        #TODO should I just define a second Store() called Player.specials() and put these in Player.special.deck? 
         if not self.hasTrainStation:
-            specials.append("Train Station")
+            specials.append(SpecialCard("Train Station"))
         if not self.hasShoppingMall:
-            specials.append("Shopping Mall")
+            specials.append(SpecialCard("Shopping Mall"))
         if not self.hasAmusementPark:
-            specials.append("Amusement Park")
+            specials.append(SpecialCard("Amusement Park"))
         if not self.hasRadioTower:
-            specials.append("Radio Tower")
+            specials.append(SpecialCard("Radio Tower"))
         return specials
 
     def swap(self, Card, otherPlayer, otherCard):
