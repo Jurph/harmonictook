@@ -9,11 +9,11 @@ Harmonic Took is a multiplayer city building game that might remind you of other
 
 # TODO: 
 
-- Make better use of dict() structures to do lookups 
-
 - Testing
     - Add unit testing
-
+    - Run CI tests on commit to git
+    - Learn how mocks work so I don't have to instantiate a bunch of BS classes just to run a test 
+  
 - Display
     - Create a Display() class [partial]
     - Add ANSI-style colored text (orange, red, green, blue, purple) for rich display
@@ -35,3 +35,8 @@ Harmonic Took is a multiplayer city building game that might remind you of other
     - Implement player choice for swapping (target and card)
     - Implement player choice for payout (target)
     - Implement forced uniqueness for purple cards
+
+- Design Quality:
+    - Make better use of dict() structures to do lookups 
+    - Consider @classmethods to handle some clunky stuff 
+    - Look for chances to use "enumerate()" instead of for loops
