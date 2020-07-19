@@ -19,29 +19,18 @@ class Player(object):
         self.hasAmusementPark = False
         self.hasRadioTower = False
 
-    def dieroll(self, dice):
+    def dieroll(self):
         self.isrollingdice = True
-        if self.hasTrainStation:
-            chosen = False
-            while not chosen:
-                if isinstance(self, Human):
-                    dice = input("Roll [1] or [2] dice?")
-                    if isinstance(dice, int) and dice > 0 and dice < 3:
-                        chosen = True
-                    else:
-                        print("Sorry: You can only enter a 1 or 2. Rolling {} dice is not permitted.".format(dice))
-                elif isinstance(self, Bot):
-                    chosen = True
-                    dice = 2 # TODO split this logic out into Human and Bot classes and just pass in the integer. This is gross. 
-        else:
-            pass
-
+        dice = self.chooseDice()
         if dice == 1:
             return random.randint(1,6)
         elif dice == 2:
             return random.randint(1,6) + random.randint(1,6)
         else:
             return 7
+
+    def chooseDice(self):
+        return 1
 
     def deposit(self, amount):
         self.bank += amount
@@ -123,6 +112,21 @@ class Human(Player): # TODO : make this more robust - type checking etc.
                 print("Sorry: {} isn't a valid choice.".format(guess))
         return variable
 
+    def chooseDice(self):
+        dice = 1
+        chosen = False
+        if self.hasTrainStation:
+            while not chosen:
+                dice = input("Roll [1] or [2] dice?")
+                if isinstance(dice, int) and dice > 0 and dice < 3:
+                    chosen = True
+                    break
+                else:
+                    print("Sorry: You can only enter a 1 or 2. Rolling {} dice is not permitted.".format(dice))
+        else:
+            pass
+        return dice
+
 class Bot(Player):
     def chooseCard(self, variable, options=list):
         if len(options) == 0:
@@ -131,6 +135,12 @@ class Bot(Player):
         else:
             variable = random.choice(options)
             return variable
+
+    def chooseDice(self): # TODO: make bot choose their number of dice more strategically
+        if self.hasTrainStation:
+            return 2
+        else:
+            return 1
 
 # Cards must have a name, cost, a payer, a payout amount, and one or more die rolls on which they "hit"
 class Card(object):
