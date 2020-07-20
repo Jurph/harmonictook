@@ -7,6 +7,12 @@ Harmonic Took is a multiplayer city building game that might remind you of other
 `t h i n k o r a c o o n`   
 `n o t m a c h i k o r o`   
 
+# NEXT UP: 
+
+- Implement a prompt of player options i.e. [B]uy, [I]mprove, [P]ass, ([R]e-roll), [S]how available cards
+- Ensure improvements are passed as valid [B]uy options
+- Reload purple cards into availableCards deck after purchase 
+
 # TODO: 
 
 - Testing
@@ -23,12 +29,11 @@ Harmonic Took is a multiplayer city building game that might remind you of other
     - Add two simple AIs (buys randomly, evaluates a static priority table)
     
 - Turns/Player mechanics
-    - Add player improvements (rolling doubles, rolling two dice) to player.dieroll()
-    - Implement a prompt of player options i.e. [B]uy, [I]mprove, [P]ass, ([R]e-roll), [S]how available cards
+    - Implement TV Station (rolling doubles) to player.dieroll()
+    - Implement Orange Card (choose to re-roll) to player.dieroll()
 
 - Orange Cards:
     - Implement payout modifiers for the Shopping Mall (orange card) 
-    - Consider booleans e.g. player.canRollTwoDice
     - player.getsMallPayouts == True?
     
 - Purple Cards:
