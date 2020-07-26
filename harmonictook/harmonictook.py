@@ -4,6 +4,8 @@
 
 import math
 import random
+import argparse
+import unittest
 import statistics
 
 class Player(object):
@@ -455,30 +457,55 @@ class SpecialDeck(Store):
             self.append(Stadium())
         self.deck.sort()
 
-def setPlayers():
+# ==== Define Unit Tests ====
+class TestPlayerFeatures(unittest.TestCase):
+    def testPlayerCreation(self):
+        players = 2
+        availableCards, playerlist = newGame(players)
+        self.assertEqual(players, len(playerlist))
+        testbot = playerlist[0]
+        self.assertEqual(testbot.name, "Robo0")
+        self.assertEqual(testbot.chooseDice, 1)
+
+# ==== Define top-level game functions ====
+def setPlayers(players=None):
     playerlist = []
-    moreplayers = True
-    while moreplayers:
-        humanorbot = input("Add a [H]uman or add a [B]ot? ")
-        if "h" in humanorbot.lower():
-            playername = input("What's the human's name? ")            
-            playerlist.append(Human(name=str(playername)))
-        elif "b" in humanorbot.lower():
-            playername = input("What's the bot's name? ")
-            playerlist.append(Bot(name=str(playername)))
-        else:
-            print("Sorry, I couldn't find an H or B in your answer. ")
-        if len(playerlist) == 4:
-            break
-        elif len(playerlist) >= 2:
-            yesorno = input("Add another player? ([Y]es / [N]o) ")
-            if "y" in yesorno.lower():
-                pass
-            elif "n" in yesorno.lower():
-                moreplayers = False
-                break
+    if players == None:
+        moreplayers = True # TODO: allow user to pass in number of bots & humans to skip this call 
+        while moreplayers:
+            humanorbot = input("Add a [H]uman or add a [B]ot? ")
+            if "h" in humanorbot.lower():
+                playername = input("What's the human's name? ")            
+                playerlist.append(Human(name=str(playername)))
+            elif "b" in humanorbot.lower():
+                playername = input("What's the bot's name? ")
+                playerlist.append(Bot(name=str(playername)))
             else:
-                print("Sorry, I couldn't find a Y or N in your answer. ")
+                print("Sorry, I couldn't find an H or B in your answer. ")
+            if len(playerlist) == 4:
+                break
+            elif len(playerlist) >= 2:
+                yesorno = input("Add another player? ([Y]es / [N]o) ")
+                if "y" in yesorno.lower():
+                    pass
+                elif "n" in yesorno.lower():
+                    moreplayers = False
+                    break
+                else:
+                    print("Sorry, I couldn't find a Y or N in your answer. ")
+        return playerlist
+    elif isinstance(players, int):
+        if players < 2:
+            players = 2
+        elif players > 4:
+            players = 4
+    else:
+        print("Unexpected variable for `players` in call to setPlayers()")
+        return
+    
+    if players >=2 and players <= 4:
+        for num in range(players):
+            playerlist.append(Bot(name=str("Robo" + str(num))))
     return playerlist
 
 def display(deckObject):
@@ -491,9 +518,9 @@ def display(deckObject):
         rowstring += str(quantity) + "\n"
     print(rowstring)
 
-def newGame():
+def newGame(players=None):
     availableCards = TableDeck()
-    playerlist = setPlayers()
+    playerlist = setPlayers(players)
     return availableCards, playerlist
 
 def nextTurn(playerlist, player, availableCards):
@@ -549,11 +576,21 @@ def functionalTest():
         print(card)
     print("-=-=-=-=-=-")
 
+
 def main():
-    availableCards, playerlist = newGame()
-    while True:
-        for turntaker in playerlist:
-            nextTurn(playerlist, turntaker, availableCards)
+    # Pull in command-line input 
+    parser = argparse.ArgumentParser(description='The card game Machi Koro')
+    parser.add_argument('-t', '--test', dest='unittests', action='store_true', required=False, help='run unit tests instead of executing the game code')
+    args = parser.parse_args()
+
+    if not args.unittests:    
+        availableCards, playerlist = newGame()
+        while True:
+            for turntaker in playerlist:
+                nextTurn(playerlist, turntaker, availableCards)
+    else:
+        print("Running unit tests now")
+        unittest.main(verbosity=2)
 
 if __name__ == "__main__":
     main()
