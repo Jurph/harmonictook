@@ -248,7 +248,7 @@ class Green(Card):
                 print("{} pays out {} to {}.".format(self.name, amount, self.owner.name))
                 self.owner.deposit(amount)
         else:
-            print("{} didn't roll the dice - no payout.".format(self.owner.name))
+            print("{} didn't roll the dice - no payout from {}.".format(self.owner.name, self.name))
 
 class Red(Card):
     def __init__(self, name=str, category=int, cost=int, payout=int, hitsOn=list):
@@ -476,10 +476,10 @@ class TestPlayerFeatures(unittest.TestCase):
         self.assertEqual(self.testbot.bank, 3)          # Should start with 3 coins
         self.testbot.deposit(10)                        # Deposit 10 coins... 
         self.assertEqual(self.testbot.bank, 13)         # Should now have 13 coins
-        debt = self.testbot.deduct(99)
-        self.otherbot.deposit(debt)
-        self.assertEqual(self.testbot.bank, 0)
-        self.assertEqual(self.otherbot.bank, 16)
+        debt = self.testbot.deduct(99)                  # Absurd overdraft should have two effects...
+        self.otherbot.deposit(debt)                     
+        self.assertEqual(self.testbot.bank, 0)          # Testbot should stop deducting at zero 
+        self.assertEqual(self.otherbot.bank, 16)        # Otherbot should only get 13 coins 
 
     def testPlayerDice(self):
         self.assertEqual(self.testbot.chooseDice(), 1)  # Should only choose one die
@@ -492,16 +492,45 @@ class TestPlayerFeatures(unittest.TestCase):
         self.assertAlmostEqual(sum/100000, 7.0, 1)      # Should average out to seven quickly
 
 class TestCardFeatures(unittest.TestCase):
-    def testGenericCardBehavior(self):
+    def setUp(self):
+        self.players = 2
+        self.availableCards, self.playerlist = newGame(self.players)
+        self.testbot = self.playerlist[0]
+        self.otherbot = self.playerlist[1]
+        self.testbot.deposit(100) 
+        self.otherbot.deposit(100)
+
+    def testGenericCard(self):
         self.assertEqual(1,1)
 
-    def testBlueCardBehavior(self):
+    def testBlueCards(self):
+        testbot = self.testbot
+        otherbot = self.otherbot
+        testbot.buy("Wheat Field", self.availableCards)
+        otherbot.buy("Wheat Field", self.availableCards)
+        testbot.buy("Ranch", self.availableCards)
+        otherbot.buy("Ranch", self.availableCards)
+        testbot.buy("Forest", self.availableCards)
+        otherbot.buy("Forest", self.availableCards)
+        testbot.buy("Mine", self.availableCards)
+        otherbot.buy("Mine", self.availableCards)
+        testbot.buy("Apple Orchard", self.availableCards)
+        otherbot.buy("Apple Orchard", self.availableCards)
+        testbot.dieroll()
+        for dieroll in range(1, 12):
+            for bot in self.playerlist:
+                for card in bot.deck.deck:
+                    if dieroll in card.hitsOn:
+                        card.trigger(self.playerlist)
+        # Testbot should end up with 89 + 1 + 2 + 1 + 1 + 1 + 3 + 5 = 103
+        # Otherbot does not have a bakery and should end up with 101 
+        self.assertEqual(testbot.bank, 103)
+        self.assertEqual(otherbot.bank, 101)
+
+    def testGreenCards(self):
         self.assertEqual(1,1)
 
-    def testGreenCardBehavior(self):
-        self.assertEqual(1,1)
-
-    def testRedCardBehavior(self):
+    def testRedCards(self):
         self.assertEqual(1,1)
         
 
@@ -617,6 +646,7 @@ def functionalTest():
 
 def main():
     unittest.main(verbosity=2)
+    # TODO: Eventually add "buffer=True" to suppress stdout
     # Pull in command-line input 
     parser = argparse.ArgumentParser(description='The card game Machi Koro')
     parser.add_argument('-t', '--test', dest='unittests', action='store_true', required=False, help='run unit tests instead of executing the game code')
