@@ -21,6 +21,7 @@ class Player(object):
         self.hasAmusementPark = False
         self.hasRadioTower = False
 
+    # TODO: refactor to return a value and an "isDoubles" boolean
     def dieroll(self):
         self.isrollingdice = True
         dice = self.chooseDice()
@@ -357,11 +358,12 @@ class SpecialCard(Card):
         self.cost = self.orangeCards[name][0]
         self.category = self.orangeCards[name][1]
         self.owner = None
+        self.hitsOn = [99] # For sorting purposes these cards should be listed last among a player's assets, with a number that can never be rolled 
 
     def bestowPower(self):
         setattr(self.owner, self.orangeCards[self.name][2], True)
-        print("DEBUG: bestowed a Special Power!!")
-        print("{} now {}".format(self.owner.name, self.orangeCards[self.name][2]))
+        # print("DEBUG: bestowed a Special Power!!")
+        # print("{} now {}".format(self.owner.name, self.orangeCards[self.name][2]))
 
 # "Stores" are wrappers for a deck[] list and a few functions; decks hold Card objects
 class Store(object):
@@ -469,11 +471,25 @@ class TestPlayerFeatures(unittest.TestCase):
         self.assertEqual(len(self.playerlist), self.players)       # Two players are created 
         self.assertEqual(self.testbot.name, "Robo0")    # Created automatically so he should have the default name 
         self.assertEqual(self.testbot.bank, 3)          # Should start with 3 coins
-        self.testbot.deposit(5)                         # Deposit 5 coins... 
-        self.assertEqual(self.testbot.bank, 8)          # Should now have 8 coins
 
-    def testPlayerDiceBehavior(self):
+    def testPlayerBank(self):
+        self.assertEqual(self.testbot.bank, 3)          # Should start with 3 coins
+        self.testbot.deposit(10)                        # Deposit 10 coins... 
+        self.assertEqual(self.testbot.bank, 13)         # Should now have 13 coins
+        debt = self.testbot.deduct(99)
+        self.otherbot.deposit(debt)
+        self.assertEqual(self.testbot.bank, 0)
+        self.assertEqual(self.otherbot.bank, 16)
+
+    def testPlayerDice(self):
         self.assertEqual(self.testbot.chooseDice(), 1)  # Should only choose one die
+        self.testbot.deposit(10)
+        self.testbot.buy("Train Station", self.availableCards)
+        self.assertEqual(self.testbot.chooseDice(), 2)  # Should choose two dice
+        sum = 0
+        for _ in range(100000):
+            sum += self.testbot.dieroll()
+        self.assertAlmostEqual(sum/100000, 7.0, 1)      # Should average out to seven quickly
 
 class TestCardFeatures(unittest.TestCase):
     def testGenericCardBehavior(self):
