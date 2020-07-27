@@ -37,13 +37,13 @@ class Player(object):
     def deposit(self, amount):
         self.bank += amount
 
-    def deduct(self, amount):
+    def deduct(self, amount):   # Deducts coins from player's account without going negative 
         if self.bank >= amount:
             deducted = amount
         else:
             deducted = self.bank
         self.bank -= deducted
-        return deducted
+        return deducted         # ...and returns the amount that was deducted, for payment purposes
 
     def buy(self, name, availableCards):
         card = None
@@ -459,13 +459,35 @@ class SpecialDeck(Store):
 
 # ==== Define Unit Tests ====
 class TestPlayerFeatures(unittest.TestCase):
+    def setUp(self):
+        self.players = 2
+        self.availableCards, self.playerlist = newGame(self.players)
+        self.testbot = self.playerlist[0]
+        self.otherbot = self.playerlist[1]
+ 
     def testPlayerCreation(self):
-        players = 2
-        availableCards, playerlist = newGame(players)
-        self.assertEqual(players, len(playerlist))
-        testbot = playerlist[0]
-        self.assertEqual(testbot.name, "Robo0")
-        self.assertEqual(testbot.chooseDice, 1)
+        self.assertEqual(len(self.playerlist), self.players)       # Two players are created 
+        self.assertEqual(self.testbot.name, "Robo0")    # Created automatically so he should have the default name 
+        self.assertEqual(self.testbot.bank, 3)          # Should start with 3 coins
+        self.testbot.deposit(5)                         # Deposit 5 coins... 
+        self.assertEqual(self.testbot.bank, 8)          # Should now have 8 coins
+
+    def testPlayerDiceBehavior(self):
+        self.assertEqual(self.testbot.chooseDice(), 1)  # Should only choose one die
+
+class TestCardFeatures(unittest.TestCase):
+    def testGenericCardBehavior(self):
+        self.assertEqual(1,1)
+
+    def testBlueCardBehavior(self):
+        self.assertEqual(1,1)
+
+    def testGreenCardBehavior(self):
+        self.assertEqual(1,1)
+
+    def testRedCardBehavior(self):
+        self.assertEqual(1,1)
+        
 
 # ==== Define top-level game functions ====
 def setPlayers(players=None):
@@ -578,19 +600,17 @@ def functionalTest():
 
 
 def main():
+    unittest.main(verbosity=2)
     # Pull in command-line input 
     parser = argparse.ArgumentParser(description='The card game Machi Koro')
     parser.add_argument('-t', '--test', dest='unittests', action='store_true', required=False, help='run unit tests instead of executing the game code')
     args = parser.parse_args()
 
-    if not args.unittests:    
-        availableCards, playerlist = newGame()
-        while True:
-            for turntaker in playerlist:
-                nextTurn(playerlist, turntaker, availableCards)
-    else:
-        print("Running unit tests now")
-        unittest.main(verbosity=2)
-
+    availableCards, playerlist = newGame()
+    while True:
+        for turntaker in playerlist:
+            nextTurn(playerlist, turntaker, availableCards)
+    
+    
 if __name__ == "__main__":
     main()
