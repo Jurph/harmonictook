@@ -227,6 +227,7 @@ class Green(Card):
         self.cost = cost
         self.payout = payout
         self.multiplies = multiplies
+        self.hitsOn = []
         self.hitsOn = hitsOn
         self.payer = 0         # Green cards always pay out from the bank (0)
         self.recipient = 1     # Green cards always pay to the die roller (1)
@@ -469,6 +470,9 @@ class TestPlayerFeatures(unittest.TestCase):
  
     def testPlayerCreation(self):
         self.assertEqual(len(self.playerlist), self.players)       # Two players are created 
+        self.assertIsInstance(self.testbot, Player)                # Make sure they're players
+        self.assertIsInstance(self.testbot, Bot)                   # Make sure they're bots
+        self.assertIsNot(self.testbot, Human)
         self.assertEqual(self.testbot.name, "Robo0")    # Created automatically so he should have the default name 
         self.assertEqual(self.testbot.bank, 3)          # Should start with 3 coins
 
@@ -503,7 +507,22 @@ class TestCardFeatures(unittest.TestCase):
     def testGenericCard(self):
         self.assertEqual(1,1)
 
-    def testBlueCards(self):
+    def testBlueCards(self): # Tests for Card subclass Blue
+        testbot = self.testbot
+        otherbot = self.otherbot
+        bluecard = Blue("Test Card", 2, 1, 1, [12])
+        self.assertIsInstance(bluecard, Card)
+        self.assertIsInstance(bluecard, Blue)
+        self.assertEqual(bluecard.hitsOn[0], 12)
+        self.assertEqual(bluecard.cost, 1)
+
+    def testGreenCards(self):
+        self.assertEqual(1,1)
+
+    def testRedCards(self):
+        self.assertEqual(1,1)
+
+    def testCardInteractions(self):
         testbot = self.testbot
         otherbot = self.otherbot
         testbot.buy("Wheat Field", self.availableCards)
@@ -526,14 +545,7 @@ class TestCardFeatures(unittest.TestCase):
         # Otherbot does not have a bakery and should end up with 101 
         self.assertEqual(testbot.bank, 103)
         self.assertEqual(otherbot.bank, 101)
-
-    def testGreenCards(self):
-        self.assertEqual(1,1)
-
-    def testRedCards(self):
-        self.assertEqual(1,1)
         
-
 # ==== Define top-level game functions ====
 def setPlayers(players=None):
     playerlist = []
