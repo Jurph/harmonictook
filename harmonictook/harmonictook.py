@@ -236,6 +236,7 @@ class Green(Card):
         subtotal = 0
         if self.owner.isrollingdice:
             if not self.multiplies: # TODO: check this
+                print("This green card doesn't multiply anything.")
                 self.owner.deposit(self.payout)
                 print("{} pays out {} to {}.".format(self.name, self.payout, self.owner.name))
             else:
@@ -244,7 +245,7 @@ class Green(Card):
                         subtotal += 1
                     else:
                         pass
-                print("{} has {} {} cards...".format(self.owner.name, subtotal, self.multiplies))
+                print("{} has {} cards of type {}...".format(self.owner.name, subtotal, self.multiplies))
                 amount = self.payout * subtotal
                 print("{} pays out {} to {}.".format(self.name, amount, self.owner.name))
                 self.owner.deposit(amount)
