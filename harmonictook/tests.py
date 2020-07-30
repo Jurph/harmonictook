@@ -6,7 +6,7 @@ import unittest
 from harmonictook import *
 
 # ==== Define Unit Tests ====
-class TestPlayerFeatures(unittest.TestCase):
+class TestPlayers(unittest.TestCase):
     def setUp(self):
         self.players = 2
         self.availableCards, self.playerlist = newGame(self.players)
@@ -40,7 +40,7 @@ class TestPlayerFeatures(unittest.TestCase):
             sum += self.testbot.dieroll()
         self.assertAlmostEqual(sum/100000, 7.0, 1)      # Should average out to seven quickly
 
-class TestCardFeatures(unittest.TestCase):
+class TestCards(unittest.TestCase):
     def setUp(self):
         self.players = 2
         self.availableCards, self.playerlist = newGame(self.players)
@@ -92,8 +92,8 @@ class TestCardFeatures(unittest.TestCase):
         self.assertEqual(otherbot.bank, 101)
 
 
-def main():
+def testmain():
     unittest.main()
 
 if __name__ == "__main__":
-    main()
+    testmain()
