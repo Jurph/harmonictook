@@ -61,8 +61,29 @@ class TestCards(unittest.TestCase):
         self.assertEqual(bluecard.hitsOn[0], 12)
         self.assertEqual(bluecard.cost, 1)
 
-    def testGreenCards(self):
-        self.assertEqual(1,1)
+    def testGreenCards(self): # Tests for Card subclass Green
+        testbot = self.testbot
+        otherbot = self.otherbot
+        greencard = Green("Green Card", 3, 1, 5, [12], 77)
+        self.assertIsInstance(greencard, Card)
+        self.assertIsInstance(greencard, Green)
+        for _ in range(6):
+            self.availableCards.append(Blue("Blue Card", 77, 1, 1, [11]))
+            self.availableCards.append(Green("Green Card", 3, 1, 5, [12], 77))
+        testbot.buy("Blue Card", self.availableCards)
+        testbot.buy("Blue Card", self.availableCards)
+        otherbot.buy("Blue Card", self.availableCards)
+        testbot.buy("Green Card", self.availableCards)
+        otherbot.buy("Green Card", self.availableCards)
+        testbot.isrollingdice = True
+        before = testbot.bank
+        for dieroll in range(10, 13):
+            for bot in self.playerlist:
+                for card in bot.deck.deck:
+                    if dieroll in card.hitsOn:
+                        card.trigger(self.playerlist)
+        after = testbot.bank
+        self.assertEqual(after-before, 12)
 
     def testRedCards(self):
         self.assertEqual(1,1)
