@@ -49,13 +49,10 @@ class TestCards(unittest.TestCase):
         self.testbot.deposit(100) 
         self.otherbot.deposit(100)
 
-    def testGenericCard(self):
-        self.assertEqual(1,1)
-
     def testBlueCards(self): # Tests for Card subclass Blue
         testbot = self.testbot
         otherbot = self.otherbot
-        bluecard = Blue("Test Card", 2, 1, 1, [12])
+        bluecard = Blue("Dark Blue Card", 2, 1, 1, [12])
         self.assertIsInstance(bluecard, Card)
         self.assertIsInstance(bluecard, Blue)
         self.assertEqual(bluecard.hitsOn[0], 12)
@@ -68,10 +65,10 @@ class TestCards(unittest.TestCase):
         self.assertIsInstance(greencard, Card)
         self.assertIsInstance(greencard, Green)
         for _ in range(6):
-            self.availableCards.append(Blue("Blue Card", 77, 1, 1, [11]))
+            self.availableCards.append(Blue("Light Blue Card", 77, 1, 1, [11]))
             self.availableCards.append(Green("Green Card", 3, 1, 5, [12], 77))
-        testbot.buy("Blue Card", self.availableCards)
-        testbot.buy("Blue Card", self.availableCards)
+        testbot.buy("Light Blue Card", self.availableCards)
+        testbot.buy("Light Blue Card", self.availableCards)
         otherbot.buy("Blue Card", self.availableCards)
         testbot.buy("Green Card", self.availableCards)
         otherbot.buy("Green Card", self.availableCards)
@@ -86,7 +83,27 @@ class TestCards(unittest.TestCase):
         self.assertEqual(after-before, 12)
 
     def testRedCards(self):
-        self.assertEqual(1,1)
+        testbot = self.testbot
+        otherbot = self.otherbot
+        redcard = Red("Maroon Card", 2, 2, 25, [1,2,3,4,5])
+        self.assertIsInstance(redcard, Card)
+        self.assertIsInstance(redcard, Red)
+        for _ in range(3):
+            self.availableCards.append(Red("Crimson Card", 2, 2, 10, [1,2,3,4,5]))
+        otherbot.buy("Crimson Card", self.availableCards)
+        testbot.buy("Crimson Card", self.availableCards)
+        testbot.isrollingdice = True
+        before = testbot.bank
+        otherbefore = otherbot.bank
+        for dieroll in range(1, 13):
+           for bot in self.playerlist:
+                for card in bot.deck.deck:
+                    if dieroll in card.hitsOn:
+                        card.trigger(self.playerlist)
+        after = testbot.bank
+        otherafter = otherbot.bank
+        self.assertEqual(after-before, 3)
+        self.assertEqual(otherafter-otherbefore, 1)
 
     def testCardInteractions(self):
         testbot = self.testbot
@@ -114,7 +131,7 @@ class TestCards(unittest.TestCase):
 
 
 def testmain():
-    unittest.main()
+    unittest.main(buffer=True)
 
 if __name__ == "__main__":
     testmain()
