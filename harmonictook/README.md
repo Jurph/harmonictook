@@ -16,7 +16,6 @@ Harmonic Took is a multiplayer city building game that might remind you of other
 # TODO: 
 
 - Testing
-    - Add unit testing
     - Run CI tests on commit to git
     - Learn how mocks work so I don't have to instantiate a bunch of BS classes just to run a test 
   
