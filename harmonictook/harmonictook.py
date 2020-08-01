@@ -24,13 +24,21 @@ class Player(object):
     # TODO: refactor to return a value and an "isDoubles" boolean
     def dieroll(self):
         self.isrollingdice = True
+        isDoubles = False
         dice = self.chooseDice()
         if dice == 1:
-            return random.randint(1,6)
+            return random.randint(1,6), False
         elif dice == 2:
-            return random.randint(1,6) + random.randint(1,6)
+            a = random.randint(1,6)
+            b = random.randint(1,6)
+            if a == b:
+                isDoubles = True
+            else:
+                isDoubles = False
+            total = a + b
+            return total, isDoubles
         else:
-            return 7
+            return 7, False
 
     def chooseDice(self):
         return 1
@@ -523,10 +531,11 @@ def nextTurn(playerlist, player, availableCards):
     for person in playerlist:
         person.isrollingdice = False
     player.isrollingdice = True
+    isDoubles = False
 
     # Die Rolling Phase 
     print("-=-=-= It's {}'s turn =-=-=-".format(player.name))
-    dieroll = player.dieroll()
+    dieroll, isDoubles = player.dieroll()
     print("{} rolled a {}.".format(player.name, dieroll))
     for person in playerlist:
         for card in person.deck.deck:
@@ -544,6 +553,9 @@ def nextTurn(playerlist, player, availableCards):
     cardname = player.chooseCard(card, options)
     if cardname != None:
         player.buy(cardname, availableCards)
+
+    return isDoubles
+    
 
 def functionalTest():
     # Right now this is a set of integration tests... 
@@ -573,18 +585,22 @@ def functionalTest():
 
 
 def main():
-    unittest.main(verbosity=2)
     # TODO: Eventually add "buffer=True" to suppress stdout
     # Pull in command-line input 
     parser = argparse.ArgumentParser(description='The card game Machi Koro')
     parser.add_argument('-t', '--test', dest='unittests', action='store_true', required=False, help='run unit tests instead of executing the game code')
     args = parser.parse_args()
-
     availableCards, playerlist = newGame()
-    while True:
+    noWinnerYet = True
+    while noWinnerYet:
         for turntaker in playerlist:
-            nextTurn(playerlist, turntaker, availableCards)
-    
-    
+            isDoubles = nextTurn(playerlist, turntaker, availableCards)
+            while isDoubles:
+                if turntaker.hasAmusementPark:
+                    print("{} rolled doubles and gets to go again!".format(turntaker.name))
+                    isDoubles = nextTurn(playerlist, turntaker, availableCards)
+                else:
+                    pass
+   
 if __name__ == "__main__":
     main()
