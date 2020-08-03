@@ -555,7 +555,6 @@ def nextTurn(playerlist, player, availableCards):
         player.buy(cardname, availableCards)
 
     return isDoubles
-    
 
 def functionalTest():
     # Right now this is a set of integration tests... 
