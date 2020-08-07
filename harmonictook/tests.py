@@ -37,7 +37,8 @@ class TestPlayers(unittest.TestCase):
         self.assertEqual(self.testbot.chooseDice(), 2)  # Should choose two dice
         sum = 0
         for _ in range(100000):
-            sum += self.testbot.dieroll()
+            roll, isDoubles = self.testbot.dieroll()
+            sum += roll
         self.assertAlmostEqual(sum/100000, 7.0, 1)      # Should average out to seven quickly
 
 class TestCards(unittest.TestCase):
