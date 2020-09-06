@@ -8,7 +8,7 @@
 `n o t m a c h i k o r o`   
 
 # Does it work? 
-[![jurph](https://circleci.com/gh/Jurph/harmonictook-main.svg?style=shield)](https://app.circleci.com/pipelines/github/Jurph/harmonictook)
+[![jurph](https://circleci.com/gh/Jurph/harmonictook-main.svg?style=shield&circletoken=865dd863ff6582b56c01424e84fdeedfbc0e0d8e)](https://app.circleci.com/pipelines/github/Jurph/harmonictook)
 
 # NEXT UP: 
 
