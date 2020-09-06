@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # -*- coding: UTF-8 -*-
-# harmonictook.py - Main game file
+# tests.py - Unit tests for harmonictook.py
 
 import unittest
 from harmonictook import *
