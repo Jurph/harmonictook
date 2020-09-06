@@ -7,6 +7,9 @@
 `t h i n k o r a c o o n`   
 `n o t m a c h i k o r o`   
 
+# Does it work? 
+[![<ORG_NAME>](https://circleci.com/gh/jurph/harmonictook.svg?style=svg)](https://app.circleci.com/pipelines/github/Jurph/harmonictook)
+
 # NEXT UP: 
 
 - Implement a prompt of player options i.e. [B]uy, [I]mprove, [P]ass, ([R]e-roll), [S]how available cards
