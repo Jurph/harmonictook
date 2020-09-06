@@ -53,11 +53,27 @@ class TestCards(unittest.TestCase):
     def testBlueCards(self): # Tests for Card subclass Blue
         testbot = self.testbot
         otherbot = self.otherbot
-        bluecard = Blue("Dark Blue Card", 2, 1, 1, [12])
+        bluecard = Blue("Dark Blue Card", 2, 1, 1, [11, 12])
         self.assertIsInstance(bluecard, Card)
         self.assertIsInstance(bluecard, Blue)
-        self.assertEqual(bluecard.hitsOn[0], 12)
+        self.assertEqual(bluecard.hitsOn[0], 11)
         self.assertEqual(bluecard.cost, 1)
+        for _ in range(4):
+            self.availableCards.append(Blue("Dark Blue Card", 2, 1, 1, [11, 12]))
+        testbot.buy("Dark Blue Card", self.availableCards)
+        otherbot.buy("Dark Blue Card", self.availableCards)
+        testbot.isrollingdice = True
+        before = testbot.bank
+        otherbefore = otherbot.bank
+        for dieroll in range(10, 13):
+            for bot in self.playerlist:
+                for card in bot.deck.deck:
+                    if dieroll in card.hitsOn:
+                        card.trigger(self.playerlist)
+        after = testbot.bank
+        otherafter = otherbot.bank
+        self.assertEqual(after - before, 2)
+        self.assertEqual(otherafter - otherbefore, 2)
 
     def testGreenCards(self): # Tests for Card subclass Green
         testbot = self.testbot
@@ -81,7 +97,7 @@ class TestCards(unittest.TestCase):
                     if dieroll in card.hitsOn:
                         card.trigger(self.playerlist)
         after = testbot.bank
-        self.assertEqual(after-before, 12)
+        self.assertEqual(after - before, 12)
 
     def testRedCards(self):
         testbot = self.testbot
