@@ -130,6 +130,8 @@ class TestCards(unittest.TestCase):
         self.assertEqual(testbot.bank, 103)
         self.assertEqual(otherbot.bank, 101)
 
+    def testBreakTheBuild(self):
+        self.assertEqual(1, 0)
 
 def testmain():
     unittest.main(buffer=True)
