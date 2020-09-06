@@ -8,7 +8,7 @@
 `n o t m a c h i k o r o`   
 
 # Does it work? 
-[![<ORG_NAME>](https://circleci.com/gh/jurph/harmonictook.svg?style=svg)](https://app.circleci.com/pipelines/github/Jurph/harmonictook)
+[![jurph](https://circleci.com/gh/jurph/harmonictook.svg?style=svg)](https://app.circleci.com/pipelines/github/Jurph/harmonictook)
 
 # NEXT UP: 
 
