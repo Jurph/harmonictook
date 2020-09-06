@@ -130,8 +130,10 @@ class TestCards(unittest.TestCase):
         self.assertEqual(testbot.bank, 103)
         self.assertEqual(otherbot.bank, 101)
 
-    def testBreakTheBuild(self):
-        self.assertEqual(1, 0)
+    # This test breaks the build on purpose to test CircleCI status reporting.
+    # Don't uncomment this test unless you want to break the build. 
+    # def testBreakTheBuild(self):
+    #    self.assertEqual(1, 0)
 
 def testmain():
     unittest.main(buffer=True)
