@@ -4,6 +4,7 @@
 
 import unittest
 from harmonictook import *
+from utility import userChoice
 
 # ==== Define Unit Tests ====
 class TestPlayers(unittest.TestCase):
@@ -99,7 +100,7 @@ class TestCards(unittest.TestCase):
         after = testbot.bank
         self.assertEqual(after - before, 12)
 
-    def testRedCards(self):
+    def testRedCards(self): # Tests for Card subclass Red
         testbot = self.testbot
         otherbot = self.otherbot
         redcard = Red("Maroon Card", 2, 2, 25, [1,2,3,4,5])
@@ -145,6 +146,10 @@ class TestCards(unittest.TestCase):
         # Otherbot does not have a bakery and should end up with 101 
         self.assertEqual(testbot.bank, 103)
         self.assertEqual(otherbot.bank, 101)
+
+class TestUtilities(unittest.TestCase):
+    def setUp(self):
+        pass
 
     # This test breaks the build on purpose to test CircleCI status reporting.
     # Don't uncomment this test unless you want to break the build. 
