@@ -4,12 +4,14 @@
 
 def userChoice(options):
     madeValidChoice = False
-    print(" == Choose One == ")
+    print(" -=-= Choose One =-=- ")
     for i in range(len(options)):
         print("[{}] : {}".format(i+1, options[i]))
     while not madeValidChoice:
+        # TODO: parse safely to handle non-ints
         j = input("Your selection: ")
-        if int(j) <= len(options):
+        j = int(j)
+        if j <= len(options):
             madeValidChoice = True
             break
         else:
