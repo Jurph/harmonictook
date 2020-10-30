@@ -4,6 +4,7 @@
 
 import math
 import random
+import utility
 import argparse
 import unittest
 import statistics
@@ -110,18 +111,21 @@ class Player(object):
 
 class Human(Player): # TODO : make this more robust - type checking etc. 
     def chooseCard(self, variable, options=list):
-        decided = False
-        if len(options) == 0:
-            print("Oh no - no valid purchase options this turn.")
-            return None
-        while not decided:
-            guess = input("Human player {}, enter your choice: ".format(self.name))
-            if guess in options:
-                variable = guess
-                decided = True     
-            else:
-                print("Sorry: {} isn't a valid choice.".format(guess))
-        return variable
+        cardname = utility.userChoice(options)
+        return cardname 
+
+        # decided = False
+        # if len(options) == 0:
+        #     print("Oh no - no valid purchase options this turn.")
+        #    return None
+        # while not decided:
+        #    guess = input("Human player {}, enter your choice: ".format(self.name))
+        #    if guess in options:
+        #        variable = guess
+        #        decided = True     
+        #    else:
+        #        print("Sorry: {} isn't a valid choice.".format(guess))
+        # return variable
 
     def chooseDice(self):
         dice = 1
@@ -549,7 +553,7 @@ def nextTurn(playerlist, player, availableCards):
     print("-=-=-={}'s Deck=-=-=-".format(player.name))
     display(player.deck)
     options = availableCards.names(maxcost=player.bank)
-    print("Valid choices are: {}".format(options))
+    # print("Valid choices are: {}".format(options))  # TODO: present a menu of options
     cardname = player.chooseCard(card, options)
     if cardname != None:
         player.buy(cardname, availableCards)

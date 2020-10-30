@@ -1,1 +1,7 @@
+# Build an environment for this project using 
+# $> conda install --yes --file requirements.txt
+# [OR]
+# $> pip install -r requirements.txt
+# -=-=-=-=-=-=-
 # No external requirements yet
+
