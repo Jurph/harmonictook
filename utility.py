@@ -2,6 +2,8 @@
 # -*- coding: UTF-8 -*-
 # utility.py - Helper functions
 
+from harmonictook import Card
+
 def userChoice(options):
     madeValidChoice = False
     print(" -=-= Choose One =-=- ")
