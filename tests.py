@@ -10,7 +10,7 @@ from utility import userChoice
 class TestPlayers(unittest.TestCase):
     def setUp(self):
         self.players = 2
-        self.availableCards, self.playerlist = newGame(self.players)
+        self.availableCards, self.specialCards, self.playerlist = newGame(self.players)
         self.testbot = self.playerlist[0]
         self.otherbot = self.playerlist[1]
  
@@ -45,7 +45,7 @@ class TestPlayers(unittest.TestCase):
 class TestCards(unittest.TestCase):
     def setUp(self):
         self.players = 2
-        self.availableCards, self.playerlist = newGame(self.players)
+        self.availableCards, self.specialCards, self.playerlist = newGame(self.players)
         self.testbot = self.playerlist[0]
         self.otherbot = self.playerlist[1]
         self.testbot.deposit(100) 

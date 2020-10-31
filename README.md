@@ -14,7 +14,6 @@
 
 - Implement a prompt of player options i.e. [B]uy, [I]mprove, [P]ass, ([R]e-roll), [S]how available cards
 - Ensure improvements are passed as valid [B]uy options
-- Reload purple cards into availableCards deck after purchase 
 
 # TODO: 
 
@@ -40,7 +39,6 @@
 - Purple Cards:
     - Implement player choice for swapping (target and card)
     - Implement player choice for payout (target)
-    - Implement forced uniqueness for purple cards
 
 - Design Quality:
     - Make better use of dict() structures to do lookups 
