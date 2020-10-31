@@ -540,13 +540,14 @@ def nextTurn(playerlist: list, player, availableCards, specialCards):
 
     # Refresh purchase options
     # If the player has a copy of the unique cards, don't present them as options
-    for card in specialCards.deck.namelist:
-        if card.name not in player.deck:
-            availableCards.append(card)
-            specialCards.remove(card)
-        elif card.name in player.deck:
-            availableCards.remove(card)
-            specialCards.append(card)
+    for cardname in specialCards.names():
+        playercardlist = player.deck.names()
+        if cardname not in playercardlist:
+            availableCards.append(cardname)
+            specialCards.remove(cardname)
+        elif cardname in playercardlist:
+            availableCards.remove(cardname)
+            specialCards.append(cardname)
         else:
             pass
 
