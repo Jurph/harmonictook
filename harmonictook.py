@@ -537,15 +537,20 @@ def nextTurn(playerlist: list, player, availableCards, specialCards):
         print("DEBUG: current player is {}".format(player.name))
         print("DEBUG: player card list is {}".format(player.deck.names()))
         print("DEBUG: checking if {} is here...".format(card.name))
-        if (card.name not in player.deck.names()) and (card.name not in availableCards.deck.names()):
-            print("DEBUG: didn't find a {}".format(card.name))
-            availableCards.append(card) # TODO: append a card, not a card *name* 
+        if (card.name not in player.deck.names()) and (card.name in availableCards.names()):
+            print("DEBUG: the {} is still for sale.".format(card.name))
+        elif (card.name not in player.deck.names()) and (card.name not in availableCards.names()):
+            print("DEBUG: didn't find a {} for sale or in player deck".format(card.name))
+            availableCards.append(card)
             specialCards.remove(card)
-        elif card.name in player.deck.names():
-            print("DEBUG: found the player has a {}".format(card.name))
-            availableCards.remove(card.name)
-            specialCards.append(card.name)
+        elif (card.name in player.deck.names()) and (card.name in availableCards.names()):
+            print("DEBUG: Shouldn't offer the player a {}".format(card.name))
+            availableCards.remove(card)
+            specialCards.append(card)
+        elif (card.name in player.deck.names()) and (card.name not in availableCards.names()):
+            print("DEBUG: {} is correctly off the market.".format(card.name))
         else:
+            print("WARN: Somehow left the truth table")
             pass
 
     # Die Rolling Phase 
