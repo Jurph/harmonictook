@@ -44,10 +44,10 @@ class Player(object):
     def chooseDice(self):
         return 1
 
-    def deposit(self, amount):
+    def deposit(self, amount: int):
         self.bank += amount
 
-    def deduct(self, amount):   # Deducts coins from player's account without going negative 
+    def deduct(self, amount: int):   # Deducts coins from player's account without going negative 
         if self.bank >= amount:
             deducted = amount
         else:
@@ -55,7 +55,7 @@ class Player(object):
         self.bank -= deducted
         return deducted         # ...and returns the amount that was deducted, for payment purposes
 
-    def buy(self, name, availableCards):
+    def buy(self, name: str, availableCards):
         card = None
         specials = self.checkRemainingSpecials()
         # Check if the name passed in is on the card list or specials list
@@ -117,19 +117,6 @@ class Human(Player): # TODO : make this more robust - type checking etc.
         else:
             cardname = utility.userChoice(options)
             return cardname 
-
-        # decided = False
-        # if len(options) == 0:
-        #     print("Oh no - no valid purchase options this turn.")
-        #    return None
-        # while not decided:
-        #    guess = input("Human player {}, enter your choice: ".format(self.name))
-        #    if guess in options:
-        #        variable = guess
-        #        decided = True     
-        #    else:
-        #        print("Sorry: {} isn't a valid choice.".format(guess))
-        # return variable
 
     def chooseDice(self):
         dice = 1
@@ -237,7 +224,7 @@ class Card(object):
     # TODO: card.helptext goes here - potentially adding info to __str__ 
 
 class Green(Card):
-    def __init__(self, name=str, category=int, cost=int, payout=int, hitsOn=list, multiplies=None):
+    def __init__(self, name: str, category: int, cost: int, payout: int, hitsOn: list, multiplies=None):
         self.name = name
         self.category = category
         self.cost = cost
@@ -248,7 +235,7 @@ class Green(Card):
         self.payer = 0         # Green cards always pay out from the bank (0)
         self.recipient = 1     # Green cards always pay to the die roller (1)
 
-    def trigger(self, players):   # Green cards increment the owner's bank by the payout
+    def trigger(self, players: list):   # Green cards increment the owner's bank by the payout
         subtotal = 0
         if self.owner.isrollingdice:
             if not self.multiplies: # TODO: check this
@@ -311,7 +298,7 @@ class Stadium(Card):
         self.payer = 2          # Stadium collects from all players
         self.payout = 2
     
-    def trigger(self, players):
+    def trigger(self, players: list):
         for person in players:
             if person.isrollingdice:
                 dieroller = person
@@ -331,7 +318,7 @@ class TVStation(Card):
         self.payer = 4          # TV Station collects from one player
         self.payout = 5
     
-    def trigger(self, players):
+    def trigger(self, players: list):
         for person in players:
             if person.isrollingdice:
                 dieroller = person
@@ -353,7 +340,7 @@ class BusinessCenter(Card):
         self.payer = 4          # Business Center collects from one targeted player (4)
         self.payout = 0         # Payout is the ability to swap cards (!)
     
-    def trigger(self, players):
+    def trigger(self, players: list):
         for person in players:
             if person.isrollingdice:
                 dieroller = person
@@ -466,17 +453,17 @@ class TableDeck(Store):
                 pass
         return namelist
 
-# The Special Deck will exist behind the scenes and replenish the TableDeck
-class SpecialDeck(Store):
-    def __init__(self, players):
+# The UniqueDeck will exist behind the scenes and replenish the TableDeck
+# so that players are only ever offered one copy of cards they can't buy twice
+class UniqueDeck(Store):
+    def __init__(self, players: list):
         self.deck = []
         self.frequencies = {}
-        for _ in range(0, players):
+        for _ in range(0, len(players)):
             self.append(TVStation())
             self.append(BusinessCenter())
             self.append(Stadium())
         self.deck.sort()
-
 
 # ==== Define top-level game functions ====
 def setPlayers(players=None):
@@ -531,15 +518,28 @@ def display(deckObject):
 
 def newGame(players=None):
     availableCards = TableDeck()
+    specialCards = UniqueDeck(players)
     playerlist = setPlayers(players)
-    return availableCards, playerlist
+    return availableCards, specialCards, playerlist
 
-def nextTurn(playerlist, player, availableCards):
+def nextTurn(playerlist, player, availableCards, specialCards):
     # Reset the turn counter
     for person in playerlist:
         person.isrollingdice = False
     player.isrollingdice = True
     isDoubles = False
+
+    # Refresh purchase options
+    # If the player has a copy of the unique cards, don't present them as options
+    for card in specialCards:
+        if card not in player.deck.deck:
+            availableCards.append(card)
+            specialCards.remove(card)
+        elif card in player.deck.deck:
+            availableCards.remove(card)
+            specialCards.append(card)
+        else:
+            pass
 
     # Die Rolling Phase 
     print("-=-=-= It's {}'s turn =-=-=-".format(player.name))
@@ -595,15 +595,15 @@ def main():
     parser = argparse.ArgumentParser(description='The card game Machi Koro')
     parser.add_argument('-t', '--test', dest='unittests', action='store_true', required=False, help='run unit tests instead of executing the game code')
     args = parser.parse_args()
-    availableCards, playerlist = newGame()
+    availableCards, specialCards, playerlist = newGame()
     noWinnerYet = True
     while noWinnerYet:
         for turntaker in playerlist:
-            isDoubles = nextTurn(playerlist, turntaker, availableCards)
+            isDoubles = nextTurn(playerlist, turntaker, availableCards, specialCards)
             while isDoubles:
                 if turntaker.hasAmusementPark:
                     print("{} rolled doubles and gets to go again!".format(turntaker.name))
-                    isDoubles = nextTurn(playerlist, turntaker, availableCards)
+                    isDoubles = nextTurn(playerlist, turntaker, availableCards, specialCards)
                 else:
                     pass
    
