@@ -376,6 +376,15 @@ class Store(object):
         self.deck = []
         self.frequencies = {}
 
+    def names(self, maxcost=99, flavor=Card): # A de-duplicated list of the available names
+        namelist = []
+        for card in self.deck:
+            if (card.name not in namelist) and isinstance(card, flavor) and (card.cost <= maxcost): # TODO: target hitsOn?
+                namelist.append(card.name)
+            else:
+                pass
+        return namelist
+
     def freq(self):
         f = {}
         for card in self.deck:
@@ -444,14 +453,14 @@ class TableDeck(Store):
         self.append(Stadium())
         self.deck.sort() 
         
-    def names(self, maxcost=99, flavor=Card): # A de-duplicated list of the available names
-        namelist = []
-        for card in self.deck:
-            if (card.name not in namelist) and isinstance(card, flavor) and (card.cost <= maxcost): # TODO: target hitsOn?
-                namelist.append(card.name)
-            else:
-                pass
-        return namelist
+    # def names(self, maxcost=99, flavor=Card): # A de-duplicated list of the available names
+    #    namelist = []
+    #    for card in self.deck:
+    #        if (card.name not in namelist) and isinstance(card, flavor) and (card.cost <= maxcost): # TODO: target hitsOn?
+    #            namelist.append(card.name)
+    #        else:
+    #            pass
+    #    return namelist
 
 # The UniqueDeck will exist behind the scenes and replenish the TableDeck
 # so that players are only ever offered one copy of cards they can't buy twice
@@ -518,11 +527,11 @@ def display(deckObject):
 
 def newGame(players=None):
     availableCards = TableDeck()
-    specialCards = UniqueDeck(players)
     playerlist = setPlayers(players)
+    specialCards = UniqueDeck(playerlist)
     return availableCards, specialCards, playerlist
 
-def nextTurn(playerlist, player, availableCards, specialCards):
+def nextTurn(playerlist: list, player, availableCards, specialCards):
     # Reset the turn counter
     for person in playerlist:
         person.isrollingdice = False
@@ -531,11 +540,11 @@ def nextTurn(playerlist, player, availableCards, specialCards):
 
     # Refresh purchase options
     # If the player has a copy of the unique cards, don't present them as options
-    for card in specialCards:
-        if card not in player.deck.deck:
+    for card in specialCards.deck.namelist:
+        if card.name not in player.deck:
             availableCards.append(card)
             specialCards.remove(card)
-        elif card in player.deck.deck:
+        elif card.name in player.deck:
             availableCards.remove(card)
             specialCards.append(card)
         else:
