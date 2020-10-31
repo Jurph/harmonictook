@@ -22,7 +22,12 @@ class Player(object):
         self.hasAmusementPark = False
         self.hasRadioTower = False
 
-    # TODO: refactor to return a value and an "isDoubles" boolean
+    def isWinner(self):
+        if self.hasAmusementPark and self.hasRadioTower and self.hasShoppingMall and self.hasTrainStation:
+            return True
+        else:
+            return False
+
     def dieroll(self):
         self.isrollingdice = True
         isDoubles = False
@@ -520,8 +525,6 @@ def newGame(players=None):
     availableCards = TableDeck()
     playerlist = setPlayers(players)
     specialCards = UniqueDeck(playerlist)
-    print("DEBUG: The Unique Deck exists and has {} cards.".format(len(specialCards.deck)))
-    print("DEBUG: The Unique Deck includes {}.".format(specialCards.deck))
     return availableCards, specialCards, playerlist
 
 def nextTurn(playerlist: list, player, availableCards, specialCards):
@@ -534,21 +537,23 @@ def nextTurn(playerlist: list, player, availableCards, specialCards):
     # Refresh purchase options
     # If the player has a copy of the unique cards, don't present them as options
     for card in specialCards.deck:
-        print("DEBUG: current player is {}".format(player.name))
-        print("DEBUG: player card list is {}".format(player.deck.names()))
-        print("DEBUG: checking if {} is here...".format(card.name))
+        # print("DEBUG: current player is {}".format(player.name))
+        # print("DEBUG: player card list is {}".format(player.deck.names()))
+        # print("DEBUG: checking if {} is here...".format(card.name))
         if (card.name not in player.deck.names()) and (card.name in availableCards.names()):
-            print("DEBUG: the {} is still for sale.".format(card.name))
+            pass
+            # print("DEBUG: the {} is still for sale.".format(card.name))
         elif (card.name not in player.deck.names()) and (card.name not in availableCards.names()):
-            print("DEBUG: didn't find a {} for sale or in player deck".format(card.name))
+            # print("DEBUG: didn't find a {} for sale or in player deck".format(card.name))
             availableCards.append(card)
             specialCards.remove(card)
         elif (card.name in player.deck.names()) and (card.name in availableCards.names()):
-            print("DEBUG: Shouldn't offer the player a {}".format(card.name))
+            # print("DEBUG: Shouldn't offer the player a {}".format(card.name))
             availableCards.remove(card)
             specialCards.append(card)
         elif (card.name in player.deck.names()) and (card.name not in availableCards.names()):
-            print("DEBUG: {} is correctly off the market.".format(card.name))
+            pass
+            # print("DEBUG: {} is correctly off the market.".format(card.name))
         else:
             print("WARN: Somehow left the truth table")
             pass
@@ -618,6 +623,12 @@ def main():
                     isDoubles = nextTurn(playerlist, turntaker, availableCards, specialCards)
                 else:
                     pass
+            if turntaker.isWinner():
+                noWinnerYet = False
+                print("{} wins!".format(turntaker.name))
+                exit()
+            else:
+                pass
    
 if __name__ == "__main__":
     main()
