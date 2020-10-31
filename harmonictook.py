@@ -111,8 +111,12 @@ class Player(object):
 
 class Human(Player): # TODO : make this more robust - type checking etc. 
     def chooseCard(self, variable, options=list):
-        cardname = utility.userChoice(options)
-        return cardname 
+        if len(options) == 0:
+            print("Oh no - no valid purchase options this turn.")
+            return None
+        else:
+            cardname = utility.userChoice(options)
+            return cardname 
 
         # decided = False
         # if len(options) == 0:
@@ -553,11 +557,9 @@ def nextTurn(playerlist, player, availableCards):
     print("-=-=-={}'s Deck=-=-=-".format(player.name))
     display(player.deck)
     options = availableCards.names(maxcost=player.bank)
-    # print("Valid choices are: {}".format(options))  # TODO: present a menu of options
     cardname = player.chooseCard(card, options)
     if cardname != None:
         player.buy(cardname, availableCards)
-
     return isDoubles
 
 def functionalTest():

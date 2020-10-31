@@ -16,4 +16,7 @@ def userChoice(options):
             break
         else:
             pass
-    return options[j]
+    # Return the user's integer choice (1-N)
+    # but subtract one because options[] is zero-indexed.
+    return options[j-1] 
+
