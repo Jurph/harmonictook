@@ -57,7 +57,7 @@ class Player(object):
 
     def buy(self, name: str, availableCards):
         card = None
-        specials = self.checkRemainingSpecials()
+        specials = self.checkRemainingUpgrades()
         # Check if the name passed in is on the card list or specials list
         for item in availableCards.deck:
             if item.name.lower() == name.lower():
@@ -82,24 +82,24 @@ class Player(object):
                 return
         if isinstance(card,(Red, Green, Blue, TVStation, Stadium, BusinessCenter)):
             availableCards.deck.remove(card)            
-        elif isinstance(card, SpecialCard):
+        elif isinstance(card, UpgradeCard):
             specials.remove(card)
             card.bestowPower() # TODO: write setSpecialFlag()
         else:
             print("Sorry: we don't have anything called '{}'.".format(name))
 
-    def checkRemainingSpecials(self):
-        specials = []
-        #TODO should I just define a second Store() called Player.specials() and put these in Player.special.deck? 
+    def checkRemainingUpgrades(self):
+        upgrades = []
+        #TODO should I just define a second Store() called Player.upgrades() and put these in Player.special.deck? 
         if not self.hasTrainStation:
-            specials.append(SpecialCard("Train Station"))
+            upgrades.append(UpgradeCard("Train Station"))
         if not self.hasShoppingMall:
-            specials.append(SpecialCard("Shopping Mall"))
+            upgrades.append(UpgradeCard("Shopping Mall"))
         if not self.hasAmusementPark:
-            specials.append(SpecialCard("Amusement Park"))
+            upgrades.append(UpgradeCard("Amusement Park"))
         if not self.hasRadioTower:
-            specials.append(SpecialCard("Radio Tower"))
-        return specials
+            upgrades.append(UpgradeCard("Radio Tower"))
+        return upgrades
 
     def swap(self, Card, otherPlayer, otherCard):
         Card.owner = otherPlayer
@@ -350,7 +350,7 @@ class BusinessCenter(Card):
         else:
             print("No payout.")
 
-class SpecialCard(Card):
+class UpgradeCard(Card):
     def __init__(self, name):
         # TODO: perfect example of when to do @class attribs, I think 
         self.orangeCards = {
