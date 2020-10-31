@@ -256,7 +256,7 @@ class Green(Card):
             print("{} didn't roll the dice - no payout from {}.".format(self.owner.name, self.name))
 
 class Red(Card):
-    def __init__(self, name=str, category=int, cost=int, payout=int, hitsOn=list):
+    def __init__(self, name: str, category: int, cost: int, payout: int, hitsOn: list):
         self.name = name
         self.category = category
         self.cost = cost
@@ -453,22 +453,13 @@ class TableDeck(Store):
         self.append(Stadium())
         self.deck.sort() 
         
-    # def names(self, maxcost=99, flavor=Card): # A de-duplicated list of the available names
-    #    namelist = []
-    #    for card in self.deck:
-    #        if (card.name not in namelist) and isinstance(card, flavor) and (card.cost <= maxcost): # TODO: target hitsOn?
-    #            namelist.append(card.name)
-    #        else:
-    #            pass
-    #    return namelist
-
-# The UniqueDeck will exist behind the scenes and replenish the TableDeck
-# so that players are only ever offered one copy of cards they can't buy twice
+# The UniqueDeck will replenish the TableDeck so players are only 
+# ever offered one copy of cards they can't buy twice
 class UniqueDeck(Store):
     def __init__(self, players: list):
         self.deck = []
         self.frequencies = {}
-        for _ in range(0, len(players)):
+        for _ in range(0, len(players)+1):
             self.append(TVStation())
             self.append(BusinessCenter())
             self.append(Stadium())
@@ -529,6 +520,8 @@ def newGame(players=None):
     availableCards = TableDeck()
     playerlist = setPlayers(players)
     specialCards = UniqueDeck(playerlist)
+    print("DEBUG: The Unique Deck exists and has {} cards.".format(len(specialCards.deck)))
+    print("DEBUG: The Unique Deck includes {}.".format(specialCards.deck))
     return availableCards, specialCards, playerlist
 
 def nextTurn(playerlist: list, player, availableCards, specialCards):
@@ -540,14 +533,18 @@ def nextTurn(playerlist: list, player, availableCards, specialCards):
 
     # Refresh purchase options
     # If the player has a copy of the unique cards, don't present them as options
-    for cardname in specialCards.names():
-        playercardlist = player.deck.names()
-        if cardname not in playercardlist:
-            availableCards.append(cardname)
-            specialCards.remove(cardname)
-        elif cardname in playercardlist:
-            availableCards.remove(cardname)
-            specialCards.append(cardname)
+    for card in specialCards.deck:
+        print("DEBUG: current player is {}".format(player.name))
+        print("DEBUG: player card list is {}".format(player.deck.names()))
+        print("DEBUG: checking if {} is here...".format(card.name))
+        if (card.name not in player.deck.names()) and (card.name not in availableCards.deck.names()):
+            print("DEBUG: didn't find a {}".format(card.name))
+            availableCards.append(card) # TODO: append a card, not a card *name* 
+            specialCards.remove(card)
+        elif card.name in player.deck.names():
+            print("DEBUG: found the player has a {}".format(card.name))
+            availableCards.remove(card.name)
+            specialCards.append(card.name)
         else:
             pass
 
