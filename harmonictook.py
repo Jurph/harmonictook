@@ -154,6 +154,26 @@ class Bot(Player):
         else:
             return 1
 
+class ThoughtfulBot(Bot):
+    def chooseCard(self, options=list):
+        if len(options) == 0:
+            print("Can't buy anything.")
+            return None
+        else:
+            evaluationDeck = Store()
+            for cardname in options:
+                for card in availableCards:
+                    if card.name == cardname:
+                        evaluationDeck.append(card)
+            for card in evaluationDeck:
+                for othercard in evaluationDeck:
+                    if card.payout > othercard.payout:
+                        evaluationDeck.remove(othercard)
+            
+            cardname = random.choice(options)
+            return cardname
+
+
 # Cards must have a name, cost, a payer, a payout amount, and one or more die rolls on which they "hit"
 class Card(object):
     def __init__(self):
@@ -567,11 +587,11 @@ def nextTurn(playerlist: list, player, availableCards, specialCards):
     # deck with orange and purple cards, and then just updating it
     # and adding it to availableCards each turn 
 
-
     # Die Rolling Phase 
     print("-=-=-= It's {}'s turn =-=-=-".format(player.name))
     dieroll, isDoubles = player.dieroll()
     print("{} rolled a {}.".format(player.name, dieroll))
+    # TODO: present option to re-roll if player.hasAmusementPark
     for person in playerlist:
         for card in person.deck.deck:
             if dieroll in card.hitsOn:

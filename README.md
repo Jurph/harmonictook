@@ -21,6 +21,7 @@
     - Learn how mocks work so I don't have to instantiate a bunch of BS classes just to run a test 
   
 - Display
+    - Add descriptive text to the cards for the menus 
     - Create a Display() class [partial]
     - Add ANSI-style colored text (orange, red, green, blue, purple) for rich display
     - BUG: emoji don't correctly display in Windows terminals
@@ -29,8 +30,7 @@
     - Add two simple AIs (buys randomly, evaluates a static priority table)
     
 - Turns/Player mechanics
-    - Implement TV Station (rolling doubles) to player.dieroll()
-    - Implement Orange Card (choose to re-roll) to player.dieroll()
+    - Implement Amusement Park (choose to re-roll) to player.dieroll()
 
 - Orange Cards:
     - Implement payout modifiers for the Shopping Mall (orange card) 
