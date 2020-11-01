@@ -469,6 +469,10 @@ class UniqueDeck(Store):
             self.append(TVStation())
             self.append(BusinessCenter())
             self.append(Stadium())
+            self.append(UpgradeCard("Train Station"))
+            self.append(UpgradeCard("Shopping Mall"))
+            self.append(UpgradeCard("Amusement Park"))
+            self.append(UpgradeCard("Radio Tower"))
         self.deck.sort()
 
 # ==== Define top-level game functions ====
@@ -559,21 +563,10 @@ def nextTurn(playerlist: list, player, availableCards, specialCards):
             print("WARN: Somehow left the truth table")
             pass
 
-    # Add the player's available upgrades to the purchase list 
     # TODO: consider refactoring to a player-specific PlayerOptions 
     # deck with orange and purple cards, and then just updating it
     # and adding it to availableCards each turn 
-    if not player.hasTrainStation:
-        t = UpgradeCard("Train Station")
-        availableCards.append(t)
-    elif player.hasTrainStation:
-        availableCards.remove("Train Station")
 
-    if not player.hasAmusementPark:
-        a = UpgradeCard("Amusement Park")
-        availableCards.append(a)
-    elif player.hasAmusementPark:
-        availableCards.remove("Amusement Park")
 
     # Die Rolling Phase 
     print("-=-=-= It's {}'s turn =-=-=-".format(player.name))
@@ -634,18 +627,19 @@ def main():
     while noWinnerYet:
         for turntaker in playerlist:
             isDoubles = nextTurn(playerlist, turntaker, availableCards, specialCards)
-            while isDoubles:
-                if turntaker.hasAmusementPark:
-                    print("{} rolled doubles and gets to go again!".format(turntaker.name))
-                    isDoubles = nextTurn(playerlist, turntaker, availableCards, specialCards)
-                else:
-                    pass
             if turntaker.isWinner():
                 noWinnerYet = False
                 print("{} wins!".format(turntaker.name))
                 exit()
             else:
                 pass
+            while isDoubles:
+                if turntaker.hasAmusementPark: #TODO: figure out why there seems to be an infinite loop here? 
+                    print("{} rolled doubles and gets to go again!".format(turntaker.name))
+                    isDoubles = nextTurn(playerlist, turntaker, availableCards, specialCards)
+                else:
+                    break
+            
    
 if __name__ == "__main__":
     main()
