@@ -115,7 +115,7 @@ class Player(object):
         otherPlayer.deck.append(Card)
 
 class Human(Player): # TODO : make this more robust - type checking etc. 
-    def chooseCard(self, variable, options=list):
+    def chooseCard(self, options=list):
         if len(options) == 0:
             print("Oh no - no valid purchase options this turn.")
             return None
@@ -128,8 +128,9 @@ class Human(Player): # TODO : make this more robust - type checking etc.
         chosen = False
         if self.hasTrainStation:
             while not chosen:
-                dice = input("Roll [1] or [2] dice?")
-                if isinstance(dice, int) and dice > 0 and dice < 3:
+                # TODO: Sanitize this input to avoid type collisions
+                dice = int(input("Roll [1] or [2] dice?  "))
+                if dice > 0 and dice < 3:
                     chosen = True
                     break
                 else:
@@ -139,13 +140,13 @@ class Human(Player): # TODO : make this more robust - type checking etc.
         return dice
 
 class Bot(Player):
-    def chooseCard(self, variable, options=list):
+    def chooseCard(self, options=list):
         if len(options) == 0:
             print("Oh no - no valid purchase options this turn.")
             return None
         else:
-            variable = random.choice(options)
-            return variable
+            cardname = random.choice(options)
+            return cardname
 
     def chooseDice(self): # TODO: make bot choose their number of dice more strategically
         if self.hasTrainStation:
@@ -528,7 +529,7 @@ def newGame(players=None):
     return availableCards, specialCards, playerlist
 
 def nextTurn(playerlist: list, player, availableCards, specialCards):
-    # Reset the turn counter
+    # Reset the turn counter; start a new turn
     for person in playerlist:
         person.isrollingdice = False
     player.isrollingdice = True
@@ -558,6 +559,22 @@ def nextTurn(playerlist: list, player, availableCards, specialCards):
             print("WARN: Somehow left the truth table")
             pass
 
+    # Add the player's available upgrades to the purchase list 
+    # TODO: consider refactoring to a player-specific PlayerOptions 
+    # deck with orange and purple cards, and then just updating it
+    # and adding it to availableCards each turn 
+    if not player.hasTrainStation:
+        t = UpgradeCard("Train Station")
+        availableCards.append(t)
+    elif player.hasTrainStation:
+        availableCards.remove("Train Station")
+
+    if not player.hasAmusementPark:
+        a = UpgradeCard("Amusement Park")
+        availableCards.append(a)
+    elif player.hasAmusementPark:
+        availableCards.remove("Amusement Park")
+
     # Die Rolling Phase 
     print("-=-=-= It's {}'s turn =-=-=-".format(player.name))
     dieroll, isDoubles = player.dieroll()
@@ -574,7 +591,7 @@ def nextTurn(playerlist: list, player, availableCards, specialCards):
     print("-=-=-={}'s Deck=-=-=-".format(player.name))
     display(player.deck)
     options = availableCards.names(maxcost=player.bank)
-    cardname = player.chooseCard(card, options)
+    cardname = player.chooseCard(options)
     if cardname != None:
         player.buy(cardname, availableCards)
     return isDoubles
