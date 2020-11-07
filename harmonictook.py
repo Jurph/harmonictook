@@ -148,7 +148,7 @@ class Bot(Player):
             cardname = random.choice(options)
             return cardname
 
-    def chooseDice(self): # TODO: make bot choose their number of dice more strategically
+    def chooseDice(self): # Just rolls the most dice he can 
         if self.hasTrainStation:
             return 2
         else:
@@ -160,20 +160,46 @@ class ThoughtfulBot(Bot):
             print("Can't buy anything.")
             return None
         else:
-            evaluationDeck = Store()
-            for cardname in options:
-                for card in availableCards:
-                    if card.name == cardname:
-                        evaluationDeck.append(card)
-            for card in evaluationDeck:
-                for othercard in evaluationDeck:
-                    if card.payout > othercard.payout:
-                        evaluationDeck.remove(othercard)
-            
+            upgrades = ["Radio Tower",
+            "Amusement Park",
+            "Shopping Mall",
+            "Train Station"]
+            earlycards = ["TV Station",
+            "Business Center",
+            "Stadium",
+            "Forest",
+            "Convenience Store",
+            "Ranch",
+            "Wheat Field",
+            "Cafe",
+            "Bakery"]
+            latecards = ["Mine",
+            "Furniture Factory",
+            "Cheese Factory",
+            "Family Restaurant",
+            "Apple Orchard",
+            "Fruit and Vegetable Market"]
+            if self.hasTrainStation:
+                preferences = upgrades + latecards + earlycards
+            else:
+                preferences = upgrades + earlycards
+            for priority in preferences:
+                for cardname in options:
+                    if cardname == priority:
+                        break 
+                    else:
+                        pass                    
             cardname = random.choice(options)
             return cardname
 
+    def chooseDice(self):
+        if not self.hasTrainStation:
+            return 1
+        else:
+            return random.choice([1,2,2,2,2])
 
+
+# === Define Class Card() === #
 # Cards must have a name, cost, a payer, a payout amount, and one or more die rolls on which they "hit"
 class Card(object):
     def __init__(self):
@@ -507,7 +533,10 @@ def setPlayers(players=None):
                 playerlist.append(Human(name=str(playername)))
             elif "b" in humanorbot.lower():
                 playername = input("What's the bot's name? ")
-                playerlist.append(Bot(name=str(playername)))
+                if playername[0] == "T":
+                    playerlist.append(ThoughtfulBot(name=str(playername)))
+                else:
+                    playerlist.append(Bot(name=str(playername)))
             else:
                 print("Sorry, I couldn't find an H or B in your answer. ")
             if len(playerlist) == 4:
