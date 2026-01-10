@@ -10,35 +10,30 @@
 # Does it work? 
 [![CircleCI Badge](https://circleci.com/gh/Jurph/harmonictook.svg?style=shield&circletoken=865dd863ff6582b56c01424e84fdeedfbc0e0d8e)](https://app.circleci.com/pipelines/github/Jurph/harmonictook)
 
-# NEXT UP: 
+# STATUS: COMPLETE! ✅
 
-- Implement a prompt of player options i.e. [B]uy, [I]mprove, [P]ass, ([R]e-roll), [S]how available cards
-- Ensure improvements are passed as valid [B]uy options
+The game is now fully playable with all core mechanics implemented:
 
-# TODO: 
+## Completed Features:
+- ✅ Player turn menu ([B]uy, [P]ass, [S]how available cards)
+- ✅ Shopping Mall payout modifiers (+1 to cafes and convenience stores)
+- ✅ Radio Tower re-roll mechanic
+- ✅ Amusement Park extra turn on doubles (infinite loop bug fixed)
+- ✅ TV Station player targeting
+- ✅ Business Center card swapping (bots get coin alternative)
+- ✅ Two AI types (Bot: random, ThoughtfulBot: priority-based)
+- ✅ All tests passing (11/11)
 
-- Testing
-    - Learn how mocks work so I don't have to instantiate a bunch of BS classes just to run a test 
-  
+# OPTIONAL ENHANCEMENTS: 
+
 - Display
     - Add descriptive text to the cards for the menus 
     - Create a Display() class [partial]
     - Add ANSI-style colored text (orange, red, green, blue, purple) for rich display
     - BUG: emoji don't correctly display in Windows terminals
 
-- Bots
-    - Add two simple AIs (buys randomly, evaluates a static priority table)
-    
-- Turns/Player mechanics
-    - Implement Amusement Park (choose to re-roll) to player.dieroll()
-
-- Orange Cards:
-    - Implement payout modifiers for the Shopping Mall (orange card) 
-    - player.getsMallPayouts == True?
-    
-- Purple Cards:
-    - Implement player choice for swapping (target and card)
-    - Implement player choice for payout (target)
+- Testing
+    - Learn how mocks work so I don't have to instantiate a bunch of BS classes just to run a test 
 
 - Design Quality:
     - Make better use of dict() structures to do lookups 

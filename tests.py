@@ -147,6 +147,106 @@ class TestCards(unittest.TestCase):
         self.assertEqual(testbot.bank, 103)
         self.assertEqual(otherbot.bank, 101)
 
+class TestUpgrades(unittest.TestCase):
+    def setUp(self):
+        self.players = 2
+        self.availableCards, self.specialCards, self.playerlist = newGame(self.players)
+        self.testbot = self.playerlist[0]
+        self.otherbot = self.playerlist[1]
+        self.testbot.deposit(100)
+        self.otherbot.deposit(100)
+
+    def testShoppingMall(self):
+        # Test that Shopping Mall adds +1 to cafe and convenience store payouts
+        testbot = self.testbot
+        otherbot = self.otherbot
+        
+        # Give testbot a cafe and Shopping Mall
+        testbot.buy("Cafe", self.availableCards)
+        testbot.buy("Shopping Mall", self.availableCards)
+        
+        # Otherbot rolls a 3 to trigger testbot's cafe
+        otherbot.isrollingdice = True
+        testbot.isrollingdice = False
+        
+        before = testbot.bank
+        otherbot_before = otherbot.bank
+        
+        # Trigger the cafe
+        for card in testbot.deck.deck:
+            if 3 in card.hitsOn and isinstance(card, Red):
+                card.trigger(self.playerlist)
+        
+        after = testbot.bank
+        otherbot_after = otherbot.bank
+        
+        # Cafe normally pays 1, but with Shopping Mall should pay 2
+        self.assertEqual(after - before, 2)
+        self.assertEqual(otherbot_before - otherbot_after, 2)
+    
+    def testRadioTowerReroll(self):
+        # Test that bot with Radio Tower can make re-roll decision
+        testbot = self.testbot
+        testbot.buy("Radio Tower", self.availableCards)
+        
+        # Set up a low roll to trigger re-roll
+        testbot._last_roll = 3
+        self.assertTrue(testbot.chooseReroll())
+        
+        # Set up a high roll to not trigger re-roll
+        testbot._last_roll = 9
+        self.assertFalse(testbot.chooseReroll())
+    
+    def testTVStationTargeting(self):
+        # Test that TV Station properly targets and steals coins
+        testbot = self.testbot
+        otherbot = self.otherbot
+        
+        # Give testbot a TV Station
+        testbot.buy("TV Station", self.availableCards)
+        
+        # Testbot rolls and TV Station activates
+        testbot.isrollingdice = True
+        otherbot.isrollingdice = False
+        
+        before = testbot.bank
+        otherbot_before = otherbot.bank
+        
+        # Find and trigger the TV Station
+        for card in testbot.deck.deck:
+            if isinstance(card, TVStation):
+                card.trigger(self.playerlist)
+        
+        after = testbot.bank
+        otherbot_after = otherbot.bank
+        
+        # TV Station should steal 5 coins (or less if target has less)
+        stolen = min(5, otherbot_before)
+        self.assertEqual(after - before, stolen)
+        self.assertEqual(otherbot_before - otherbot_after, stolen)
+    
+    def testBusinessCenterBot(self):
+        # Test that bot gets coins from Business Center instead of swapping
+        testbot = self.testbot
+        
+        # Give testbot a Business Center
+        testbot.buy("Business Center", self.availableCards)
+        
+        # Testbot rolls and Business Center activates
+        testbot.isrollingdice = True
+        
+        before = testbot.bank
+        
+        # Find and trigger the Business Center
+        for card in testbot.deck.deck:
+            if isinstance(card, BusinessCenter):
+                card.trigger(self.playerlist)
+        
+        after = testbot.bank
+        
+        # Bot should get 5 coins
+        self.assertEqual(after - before, 5)
+
 class TestUtilities(unittest.TestCase):
     def setUp(self):
         pass

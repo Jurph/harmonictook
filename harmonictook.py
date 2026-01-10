@@ -2,6 +2,7 @@
 # -*- coding: UTF-8 -*-
 # harmonictook.py - Main game file
 
+import rich
 import math
 import random
 import utility
@@ -48,6 +49,16 @@ class Player(object):
 
     def chooseDice(self):
         return 1
+    
+    def chooseReroll(self):
+        return False
+    
+    def chooseTarget(self, players: list):
+        # Default: random choice
+        valid_targets = [p for p in players if not p.isrollingdice]
+        if valid_targets:
+            return random.choice(valid_targets)
+        return None
 
     def deposit(self, amount: int):
         self.bank += amount
@@ -115,6 +126,20 @@ class Player(object):
         otherPlayer.deck.append(Card)
 
 class Human(Player): # TODO : make this more robust - type checking etc. 
+    def chooseAction(self, availableCards):
+        while True:
+            action = input("[B]uy a card, [P]ass, or [S]how available cards? ").lower()
+            if 'b' in action:
+                return 'buy'
+            elif 'p' in action:
+                return 'pass'
+            elif 's' in action:
+                print("\n-=-= Available Cards =-=-")
+                display(availableCards)
+                continue
+            else:
+                print("Please enter B, P, or S.")
+    
     def chooseCard(self, options=list):
         if len(options) == 0:
             print("Oh no - no valid purchase options this turn.")
@@ -138,8 +163,39 @@ class Human(Player): # TODO : make this more robust - type checking etc.
         else:
             pass
         return dice
+    
+    def chooseReroll(self):
+        if self.hasRadioTower:
+            choice = input("Use Radio Tower to re-roll? ([Y]es / [N]o) ")
+            if "y" in choice.lower():
+                return True
+        return False
+    
+    def chooseTarget(self, players: list):
+        valid_targets = [p for p in players if not p.isrollingdice]
+        if not valid_targets:
+            return None
+        print("Choose a target player:")
+        for i, player in enumerate(valid_targets):
+            print("[{}] {} ({} coins)".format(i+1, player.name, player.bank))
+        while True:
+            try:
+                choice = int(input("Your selection: "))
+                if 1 <= choice <= len(valid_targets):
+                    return valid_targets[choice - 1]
+                else:
+                    print("Invalid choice. Try again.")
+            except ValueError:
+                print("Please enter a number.")
 
 class Bot(Player):
+    def chooseAction(self, availableCards):
+        # Bots always try to buy if they have enough money
+        options = availableCards.names(maxcost=self.bank)
+        if len(options) > 0:
+            return 'buy'
+        return 'pass'
+    
     def chooseCard(self, options=list):
         if len(options) == 0:
             print("Oh no - no valid purchase options this turn.")
@@ -153,6 +209,12 @@ class Bot(Player):
             return 2
         else:
             return 1
+    
+    def chooseReroll(self):
+        # Simple bot: re-roll if result is 1-4
+        if self.hasRadioTower and hasattr(self, '_last_roll'):
+            return self._last_roll < 5
+        return False
 
 class ThoughtfulBot(Bot):
     def chooseCard(self, options=list):
@@ -290,10 +352,13 @@ class Green(Card):
     def trigger(self, players: list):   # Green cards increment the owner's bank by the payout
         subtotal = 0
         if self.owner.isrollingdice:
-            if not self.multiplies: # TODO: check this
-                print("This green card doesn't multiply anything.")
-                self.owner.deposit(self.payout)
-                print("{} pays out {} to {}.".format(self.name, self.payout, self.owner.name))
+            if not self.multiplies:
+                payout_amount = self.payout
+                # Shopping Mall adds +1 to convenience store payouts
+                if self.owner.hasShoppingMall and self.name == "Convenience Store":
+                    payout_amount += 1
+                self.owner.deposit(payout_amount)
+                print("{} pays out {} to {}.".format(self.name, payout_amount, self.owner.name))
             else:
                 for card in self.owner.deck.deck:
                     if card.category == self.multiplies:
@@ -323,7 +388,11 @@ class Red(Card):
                 dieroller = person
             else:
                 pass
-        payout = dieroller.deduct(self.payout)
+        payout_amount = self.payout
+        # Shopping Mall adds +1 to cafe and convenience store payouts
+        if self.owner.hasShoppingMall and self.name in ["Cafe", "Family Restaurant", "Convenience Store"]:
+            payout_amount += 1
+        payout = dieroller.deduct(payout_amount)
         self.owner.deposit(payout)
         
 class Blue(Card):
@@ -376,11 +445,18 @@ class TVStation(Card):
                 dieroller = person
             else:
                 pass
-        target = random.choice(players)
-        while target.isrollingdice:
-            target = random.choice(players)
-        payment = target.deduct(self.payout)
-        dieroller.deposit(payment)
+        if dieroller == self.owner:
+            print("{} activates TV Station!".format(self.owner.name))
+            target = dieroller.chooseTarget(players)
+            if target:
+                print("{} targets {}!".format(self.owner.name, target.name))
+                payment = target.deduct(self.payout)
+                dieroller.deposit(payment)
+                print("{} collected {} coins from {}.".format(self.owner.name, payment, target.name))
+            else:
+                print("No valid targets for TV Station.")
+        else:
+            print("TV Station doesn't activate (not die roller's turn).")
 
 class BusinessCenter(Card):
     def __init__(self, name="Business Center"):
@@ -397,10 +473,33 @@ class BusinessCenter(Card):
             if person.isrollingdice:
                 dieroller = person
         if self.owner == dieroller:
-            print("Swapping cards is not implemented just yet. Here's five bucks, kid.")
-            dieroller.deposit(5)
+            print("{} activates Business Center!".format(self.owner.name))
+            # For bots, just give them coins since card swapping is complex
+            if not isinstance(dieroller, Human):
+                print("{} gets 5 coins (bot doesn't swap cards).".format(dieroller.name))
+                dieroller.deposit(5)
+            else:
+                swap_choice = input("Do you want to swap cards? ([Y]es / [N]o) ")
+                if "y" in swap_choice.lower():
+                    target = dieroller.chooseTarget(players)
+                    if target and len(target.deck.deck) > 0:
+                        print("Choose your card to give away:")
+                        my_cards = [c for c in dieroller.deck.deck if not isinstance(c, UpgradeCard)]
+                        their_cards = [c for c in target.deck.deck if not isinstance(c, UpgradeCard)]
+                        if my_cards and their_cards:
+                            my_card = utility.userChoice([c.name for c in my_cards])
+                            my_card_obj = [c for c in my_cards if c.name == my_card][0]
+                            print("Choose {}'s card to take:".format(target.name))
+                            their_card = utility.userChoice([c.name for c in their_cards])
+                            their_card_obj = [c for c in their_cards if c.name == their_card][0]
+                            dieroller.swap(my_card_obj, target, their_card_obj)
+                            print("Swapped {} for {}'s {}.".format(my_card, target.name, their_card))
+                        else:
+                            print("Not enough swappable cards.")
+                    else:
+                        print("No valid swap target.")
         else:
-            print("No payout.")
+            print("Business Center doesn't activate (not die roller's turn).")
 
 class UpgradeCard(Card):
     def __init__(self, name):
@@ -524,7 +623,7 @@ class UniqueDeck(Store):
 # ==== Define top-level game functions ====
 def setPlayers(players=None):
     playerlist = []
-    if players == None:
+    if players is None:
         moreplayers = True # TODO: allow user to pass in number of bots & humans to skip this call 
         while moreplayers:
             humanorbot = input("Add a [H]uman or add a [B]ot? ")
@@ -620,7 +719,13 @@ def nextTurn(playerlist: list, player, availableCards, specialCards):
     print("-=-=-= It's {}'s turn =-=-=-".format(player.name))
     dieroll, isDoubles = player.dieroll()
     print("{} rolled a {}.".format(player.name, dieroll))
-    # TODO: present option to re-roll if player.hasAmusementPark
+    
+    # Radio Tower re-roll option
+    player._last_roll = dieroll  # Store for bot decision-making
+    if player.chooseReroll():
+        print("{} uses the Radio Tower to re-roll!".format(player.name))
+        dieroll, isDoubles = player.dieroll()
+        print("{} rolled a {}.".format(player.name, dieroll))
     for person in playerlist:
         for card in person.deck.deck:
             if dieroll in card.hitsOn:
@@ -632,10 +737,16 @@ def nextTurn(playerlist: list, player, availableCards, specialCards):
         print("{} now has {} coins.".format(person.name, person.bank))
     print("-=-=-={}'s Deck=-=-=-".format(player.name))
     display(player.deck)
-    options = availableCards.names(maxcost=player.bank)
-    cardname = player.chooseCard(options)
-    if cardname != None:
-        player.buy(cardname, availableCards)
+    
+    action = player.chooseAction(availableCards)
+    if action == 'buy':
+        options = availableCards.names(maxcost=player.bank)
+        cardname = player.chooseCard(options)
+        if cardname is not None:
+            player.buy(cardname, availableCards)
+    elif action == 'pass':
+        print("{} passes this turn.".format(player.name))
+    
     return isDoubles
 
 def functionalTest():
@@ -682,12 +793,14 @@ def main():
                 exit()
             else:
                 pass
-            while isDoubles:
-                if turntaker.hasAmusementPark: #TODO: figure out why there seems to be an infinite loop here? 
-                    print("{} rolled doubles and gets to go again!".format(turntaker.name))
-                    isDoubles = nextTurn(playerlist, turntaker, availableCards, specialCards)
-                else:
-                    break
+            # Amusement Park: extra turn on doubles
+            while isDoubles and turntaker.hasAmusementPark:
+                print("{} rolled doubles and gets to go again!".format(turntaker.name))
+                isDoubles = nextTurn(playerlist, turntaker, availableCards, specialCards)
+                if turntaker.isWinner():
+                    noWinnerYet = False
+                    print("{} wins!".format(turntaker.name))
+                    exit()
             
    
 if __name__ == "__main__":
