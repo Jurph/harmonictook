@@ -2,7 +2,6 @@
 # -*- coding: UTF-8 -*-
 # harmonictook.py - Main game file
 
-import rich
 import math
 import random
 import utility
@@ -246,13 +245,9 @@ class ThoughtfulBot(Bot):
             else:
                 preferences = upgrades + earlycards
             for priority in preferences:
-                for cardname in options:
-                    if cardname == priority:
-                        break 
-                    else:
-                        pass                    
-            cardname = random.choice(options)
-            return cardname
+                if priority in options:
+                    return priority
+            return random.choice(options)
 
     def chooseDice(self):
         if not self.hasTrainStation:
