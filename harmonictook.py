@@ -99,7 +99,7 @@ class Player(object):
             availableCards.deck.remove(card)            
         elif isinstance(card, UpgradeCard):
             specials.remove(card)
-            card.bestowPower() # TODO: write setSpecialFlag()
+            card.bestowPower()
         else:
             print("Sorry: we don't have anything called '{}'.".format(name))
 
@@ -149,18 +149,16 @@ class Human(Player): # TODO : make this more robust - type checking etc.
 
     def chooseDice(self):
         dice = 1
-        chosen = False
         if self.hasTrainStation:
-            while not chosen:
-                # TODO: Sanitize this input to avoid type collisions
-                dice = int(input("Roll [1] or [2] dice?  "))
-                if dice > 0 and dice < 3:
-                    chosen = True
-                    break
-                else:
-                    print("Sorry: You can only enter a 1 or 2. Rolling {} dice is not permitted.".format(dice))
-        else:
-            pass
+            while True:
+                try:
+                    dice = int(input("Roll [1] or [2] dice?  "))
+                    if 1 <= dice <= 2:
+                        break
+                    else:
+                        print("Sorry: please enter 1 or 2.")
+                except ValueError:
+                    print("Sorry: please enter 1 or 2.")
         return dice
     
     def chooseReroll(self):
@@ -616,10 +614,23 @@ class UniqueDeck(Store):
         self.deck.sort()
 
 # ==== Define top-level game functions ====
-def setPlayers(players=None):
+def setPlayers(players=None, bots=0, humans=0):
     playerlist = []
-    if players is None:
-        moreplayers = True # TODO: allow user to pass in number of bots & humans to skip this call 
+    if bots > 0 or humans > 0:
+        total = bots + humans
+        if total < 2:
+            print("Need at least 2 players. Adding a bot.")
+            bots += 2 - total
+        elif total > 4:
+            print("Maximum 4 players. Trimming bots.")
+            bots = max(0, 4 - humans)
+        for i in range(humans):
+            playerlist.append(Human(name="Player{}".format(i + 1)))
+        for i in range(bots):
+            playerlist.append(ThoughtfulBot(name="Robo{}".format(i)))
+        return playerlist
+    elif players is None:
+        moreplayers = True
         while moreplayers:
             humanorbot = input("Add a [H]uman or add a [B]ot? ")
             if "h" in humanorbot.lower():
@@ -669,9 +680,9 @@ def display(deckObject):
         rowstring += str(quantity) + "\n"
     print(rowstring)
 
-def newGame(players=None):
+def newGame(players=None, bots=0, humans=0):
     availableCards = TableDeck()
-    playerlist = setPlayers(players)
+    playerlist = setPlayers(players, bots=bots, humans=humans)
     specialCards = UniqueDeck(playerlist)
     return availableCards, specialCards, playerlist
 
@@ -776,8 +787,10 @@ def main():
     # Pull in command-line input 
     parser = argparse.ArgumentParser(description='The card game Machi Koro')
     parser.add_argument('-t', '--test', dest='unittests', action='store_true', required=False, help='run unit tests instead of executing the game code')
+    parser.add_argument('--bots', type=int, default=0, metavar='N', help='number of bot players (skips interactive setup)')
+    parser.add_argument('--humans', type=int, default=0, metavar='N', help='number of human players (skips interactive setup)')
     args = parser.parse_args()
-    availableCards, specialCards, playerlist = newGame()
+    availableCards, specialCards, playerlist = newGame(bots=args.bots, humans=args.humans)
     noWinnerYet = True
     while noWinnerYet:
         for turntaker in playerlist:
