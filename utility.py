@@ -2,13 +2,13 @@
 # -*- coding: UTF-8 -*-
 # utility.py - Helper functions
 
-def userChoice(options):
+def userChoice(options: list) -> str:
+    """Display a numbered menu and return the element chosen by the user (1-indexed input)."""
     madeValidChoice = False
     print(" -=-= Choose One =-=- ")
     for i in range(len(options)):
         print("[{}] : {}".format(i+1, options[i]))
     while not madeValidChoice:
-        # TODO: parse safely to handle non-ints
         j = input("Your selection: ")
         j = int(j)
         if j <= len(options):
