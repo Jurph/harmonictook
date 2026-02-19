@@ -495,14 +495,14 @@ class BusinessCenter(Card):
             print("Business Center doesn't activate (not die roller's turn).")
 
 class UpgradeCard(Card):
+    orangeCards = {
+        "Train Station" : [4, 7, "hasTrainStation"],
+        "Shopping Mall" : [10, 7, "hasShoppingMall"],
+        "Amusement Park" : [16, 7, "hasAmusementPark"],
+        "Radio Tower" : [22, 7, "hasRadioTower"]
+    }
+
     def __init__(self, name):
-        # TODO: perfect example of when to do @class attribs, I think 
-        self.orangeCards = {
-            "Train Station" : [4, 7, "hasTrainStation"],
-            "Shopping Mall" : [10, 7, "hasShoppingMall"],
-            "Amusement Park" : [16, 7, "hasAmusementPark"],
-            "Radio Tower" : [22, 7, "hasRadioTower"]
-        }
         self.name = name
         self.cost = self.orangeCards[name][0]
         self.category = self.orangeCards[name][1]
