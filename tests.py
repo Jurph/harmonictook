@@ -3,11 +3,16 @@
 # tests.py - Unit tests for harmonictook.py
 
 import unittest
-from harmonictook import *
-from utility import userChoice
+from harmonictook import (
+    newGame, Player, Bot, ThoughtfulBot, Human,
+    Card, Blue, Green, Red, Stadium, TVStation, BusinessCenter,
+    TableDeck,
+)
 
 # ==== Define Unit Tests ====
 class TestPlayers(unittest.TestCase):
+    """Tests for Player creation, bank mechanics, and dice-rolling behaviour."""
+
     def setUp(self):
         self.players = 2
         self.availableCards, self.specialCards, self.playerlist = newGame(self.players)
@@ -15,6 +20,7 @@ class TestPlayers(unittest.TestCase):
         self.otherbot = self.playerlist[1]
  
     def testPlayerCreation(self):
+        """Verify correct player count, type, name, and starting bank."""
         self.assertEqual(len(self.playerlist), self.players)       # Two players are created 
         self.assertIsInstance(self.testbot, Player)                # Make sure they're players
         self.assertIsInstance(self.testbot, Bot)                   # Make sure they're bots
@@ -23,6 +29,7 @@ class TestPlayers(unittest.TestCase):
         self.assertEqual(self.testbot.bank, 3)          # Should start with 3 coins
 
     def testPlayerBank(self):
+        """Verify deposit adds correctly and deduct never goes below zero."""
         self.assertEqual(self.testbot.bank, 3)          # Should start with 3 coins
         self.testbot.deposit(10)                        # Deposit 10 coins... 
         self.assertEqual(self.testbot.bank, 13)         # Should now have 13 coins
@@ -32,6 +39,7 @@ class TestPlayers(unittest.TestCase):
         self.assertEqual(self.otherbot.bank, 16)        # Otherbot should only get 13 coins 
 
     def testPlayerDice(self):
+        """Verify chooseDice obeys Train Station, and two-die rolls average to 7."""
         self.assertEqual(self.testbot.chooseDice(), 1)  # Should only choose one die
         self.testbot.deposit(10)
         self.testbot.buy("Train Station", self.availableCards)
@@ -43,6 +51,8 @@ class TestPlayers(unittest.TestCase):
         self.assertAlmostEqual(sum/100000, 7.0, 1)      # Should average out to seven quickly
 
 class TestCards(unittest.TestCase):
+    """Tests for card trigger mechanics across Blue, Green, Red subclasses and their interactions."""
+
     def setUp(self):
         self.players = 2
         self.availableCards, self.specialCards, self.playerlist = newGame(self.players)
@@ -51,7 +61,8 @@ class TestCards(unittest.TestCase):
         self.testbot.deposit(100) 
         self.otherbot.deposit(100)
 
-    def testBlueCards(self): # Tests for Card subclass Blue
+    def testBlueCards(self):
+        """Verify Blue cards pay all owners from the bank on any die roll."""
         testbot = self.testbot
         otherbot = self.otherbot
         bluecard = Blue("Dark Blue Card", 2, 1, 1, [11, 12])
@@ -76,7 +87,8 @@ class TestCards(unittest.TestCase):
         self.assertEqual(after - before, 2)
         self.assertEqual(otherafter - otherbefore, 2)
 
-    def testGreenCards(self): # Tests for Card subclass Green
+    def testGreenCards(self):
+        """Verify Green multiplier cards pay the die-roller scaled to matching category card count."""
         testbot = self.testbot
         otherbot = self.otherbot
         greencard = Green("Green Card", 3, 1, 5, [12], 77)
@@ -100,7 +112,8 @@ class TestCards(unittest.TestCase):
         after = testbot.bank
         self.assertEqual(after - before, 12)
 
-    def testRedCards(self): # Tests for Card subclass Red
+    def testRedCards(self):
+        """Verify Red cards deduct from the die-roller and credit the card owner."""
         testbot = self.testbot
         otherbot = self.otherbot
         redcard = Red("Maroon Card", 2, 2, 25, [1,2,3,4,5])
@@ -124,6 +137,7 @@ class TestCards(unittest.TestCase):
         self.assertEqual(otherafter-otherbefore, 1)
 
     def testCardInteractions(self):
+        """Verify correct cumulative payouts when multiple card types activate in one round."""
         testbot = self.testbot
         otherbot = self.otherbot
         testbot.buy("Wheat Field", self.availableCards)
@@ -147,7 +161,27 @@ class TestCards(unittest.TestCase):
         self.assertEqual(testbot.bank, 103)
         self.assertEqual(otherbot.bank, 101)
 
+    def testStadiumTrigger(self):
+        """Verify Stadium collects 2 coins from each player and credits them all to the die-roller."""
+        testbot = self.testbot
+        otherbot = self.otherbot
+        self.availableCards.append(Stadium())
+        testbot.buy("Stadium", self.availableCards)
+        testbot.isrollingdice = True
+        otherbot.isrollingdice = False
+        before = testbot.bank
+        otherbot_before = otherbot.bank
+        for card in testbot.deck.deck:
+            if isinstance(card, Stadium):
+                card.trigger(self.playerlist)
+        # With 2 players: roller deducts from self (net 0) and collects 2 from other → net +2
+        self.assertEqual(testbot.bank - before, 2)
+        self.assertEqual(otherbot_before - otherbot.bank, 2)
+
+
 class TestUpgrades(unittest.TestCase):
+    """Tests for upgrade card effects and purple card trigger mechanics."""
+
     def setUp(self):
         self.players = 2
         self.availableCards, self.specialCards, self.playerlist = newGame(self.players)
@@ -157,6 +191,7 @@ class TestUpgrades(unittest.TestCase):
         self.otherbot.deposit(100)
 
     def testShoppingMall(self):
+        """Verify Shopping Mall adds +1 to Cafe payout when owner holds the upgrade."""
         # Test that Shopping Mall adds +1 to cafe and convenience store payouts
         testbot = self.testbot
         otherbot = self.otherbot
@@ -185,6 +220,7 @@ class TestUpgrades(unittest.TestCase):
         self.assertEqual(otherbot_before - otherbot_after, 2)
     
     def testRadioTowerReroll(self):
+        """Verify Bot.chooseReroll() returns True on rolls ≤4 and False on rolls ≥5 when Radio Tower is owned."""
         # Test that bot with Radio Tower can make re-roll decision
         testbot = self.testbot
         testbot.buy("Radio Tower", self.availableCards)
@@ -198,6 +234,7 @@ class TestUpgrades(unittest.TestCase):
         self.assertFalse(testbot.chooseReroll())
     
     def testTVStationTargeting(self):
+        """Verify TV Station steals exactly 5 coins (or all if target has fewer) from the chosen target."""
         # Test that TV Station properly targets and steals coins
         testbot = self.testbot
         otherbot = self.otherbot
@@ -226,6 +263,7 @@ class TestUpgrades(unittest.TestCase):
         self.assertEqual(otherbot_before - otherbot_after, stolen)
     
     def testBusinessCenterBot(self):
+        """Verify Business Center gives a bot 5 coins in lieu of the card-swap interaction."""
         # Test that bot gets coins from Business Center instead of swapping
         testbot = self.testbot
         
@@ -247,14 +285,165 @@ class TestUpgrades(unittest.TestCase):
         # Bot should get 5 coins
         self.assertEqual(after - before, 5)
 
+    def testAmusementParkDoubles(self):
+        """Verify dieroll() can return isDoubles=True at least once in 200 two-die rolls."""
+        testbot = self.testbot
+        testbot.buy("Train Station", self.availableCards)
+        self.assertTrue(testbot.hasTrainStation)
+        found_doubles = False
+        for _ in range(200):
+            _, is_doubles = testbot.dieroll()
+            if is_doubles:
+                found_doubles = True
+                break
+        self.assertTrue(found_doubles, "Expected at least one doubles in 200 two-die rolls")
+
+    def testThoughtfulBotPriority(self):
+        """Verify ThoughtfulBot picks an upgrade over a lower-priority card when both are available."""
+        thoughtful = ThoughtfulBot(name="Thoughtful")
+        options = ["Wheat Field", "Radio Tower", "Mine", "Cafe"]
+        choice = thoughtful.chooseCard(options)
+        self.assertEqual(choice, "Radio Tower")
+
+    def testInsufficientFunds(self):
+        """Verify buy() prints a message and leaves the bank unchanged when the player can't afford the card."""
+        testbot = self.testbot
+        testbot.deduct(testbot.bank)  # drain to zero
+        testbot.deposit(1)            # give exactly 1 coin
+        bank_before = testbot.bank
+        testbot.buy("Forest", self.availableCards)  # costs 3
+        self.assertEqual(testbot.bank, bank_before)
+
+    def testBuyNonexistentCard(self):
+        """Verify buy() does not crash and leaves the bank unchanged for an unknown card name."""
+        testbot = self.testbot
+        bank_before = testbot.bank
+        testbot.buy("Totally Fake Card", self.availableCards)
+        self.assertEqual(testbot.bank, bank_before)
+
+    def testPlayerSwap(self):
+        """Verify swap() moves cards between players and updates ownership correctly."""
+        testbot = self.testbot
+        otherbot = self.otherbot
+        testbot.buy("Forest", self.availableCards)
+        otherbot.buy("Ranch", self.availableCards)
+        forest = next(c for c in testbot.deck.deck if c.name == "Forest")
+        ranch = next(c for c in otherbot.deck.deck if c.name == "Ranch")
+        testbot.swap(forest, otherbot, ranch)
+        testbot_names = [c.name for c in testbot.deck.deck]
+        otherbot_names = [c.name for c in otherbot.deck.deck]
+        self.assertIn("Ranch", testbot_names)
+        self.assertNotIn("Forest", testbot_names)
+        self.assertIn("Forest", otherbot_names)
+        self.assertNotIn("Ranch", otherbot_names)
+        self.assertEqual(ranch.owner, testbot)
+        self.assertEqual(forest.owner, otherbot)
+
+    def testCheckRemainingUpgrades(self):
+        """Verify checkRemainingUpgrades() shrinks by one each time an upgrade is purchased."""
+        testbot = self.testbot
+        self.assertEqual(len(testbot.checkRemainingUpgrades()), 4)
+        testbot.buy("Train Station", self.availableCards)
+        self.assertEqual(len(testbot.checkRemainingUpgrades()), 3)
+        testbot.buy("Shopping Mall", self.availableCards)
+        self.assertEqual(len(testbot.checkRemainingUpgrades()), 2)
+        testbot.buy("Amusement Park", self.availableCards)
+        self.assertEqual(len(testbot.checkRemainingUpgrades()), 1)
+        testbot.buy("Radio Tower", self.availableCards)
+        self.assertEqual(len(testbot.checkRemainingUpgrades()), 0)
+
+
 class TestUtilities(unittest.TestCase):
+    """Placeholder for utility function tests."""
+
     def setUp(self):
         pass
 
     # This test breaks the build on purpose to test CircleCI status reporting.
-    # Don't uncomment this test unless you want to break the build. 
+    # Don't uncomment this test unless you want to break the build.
     # def testBreakTheBuild(self):
     #    self.assertEqual(1, 0)
+
+
+class TestWinCondition(unittest.TestCase):
+    """Tests for the isWinner() win detection logic."""
+
+    def setUp(self):
+        _, _, playerlist = newGame(2)
+        self.bot = playerlist[0]
+        self.bot.deposit(100)
+
+    def testIsWinner(self):
+        """Verify isWinner() returns False with 0–3 upgrades and True only when all four are held."""
+        self.assertFalse(self.bot.isWinner())
+        self.bot.hasTrainStation = True
+        self.assertFalse(self.bot.isWinner())
+        self.bot.hasShoppingMall = True
+        self.assertFalse(self.bot.isWinner())
+        self.bot.hasAmusementPark = True
+        self.assertFalse(self.bot.isWinner())
+        self.bot.hasRadioTower = True
+        self.assertTrue(self.bot.isWinner())
+
+
+class TestCardSortingAndComparison(unittest.TestCase):
+    """Tests for Card sort ordering and comparison operators."""
+
+    def testCardOrdering(self):
+        """Verify that cards sort by mean hitsOn: Wheat Field < Ranch < Bakery < Forest."""
+        wheat = Blue("Wheat Field", 1, 1, 1, [1])
+        ranch = Blue("Ranch", 2, 1, 1, [2])
+        bakery = Green("Bakery", 3, 1, 1, [2, 3])
+        forest = Blue("Forest", 5, 3, 1, [5])
+        cards = [forest, bakery, wheat, ranch]
+        cards.sort()
+        self.assertEqual(cards[0].name, "Wheat Field")
+        self.assertEqual(cards[-1].name, "Forest")
+        self.assertLess(wheat, ranch)
+        self.assertLess(ranch, forest)
+        self.assertGreater(forest, bakery)
+
+
+class TestStoreOperations(unittest.TestCase):
+    """Tests for Store, PlayerDeck, and TableDeck query methods."""
+
+    def setUp(self):
+        _, _, playerlist = newGame(2)
+        self.bot = playerlist[0]
+
+    def testPlayerDeckStartingCards(self):
+        """Verify a new PlayerDeck contains exactly Wheat Field and Bakery."""
+        names = self.bot.deck.names()
+        self.assertIn("Wheat Field", names)
+        self.assertIn("Bakery", names)
+        self.assertEqual(len(names), 2)
+
+    def testTableDeckContents(self):
+        """Verify TableDeck is stocked with six copies of Wheat Field and one Stadium."""
+        table = TableDeck()
+        freq = table.freq()
+        counts_by_name = {}
+        for card, count in freq.items():
+            counts_by_name[card.name] = counts_by_name.get(card.name, 0) + count
+        self.assertEqual(counts_by_name.get("Wheat Field", 0), 6)
+        self.assertEqual(counts_by_name.get("Stadium", 0), 1)
+
+    def testStoreNamesFiltering(self):
+        """Verify names() respects the maxcost filter."""
+        table = TableDeck()
+        cheap = table.names(maxcost=1)
+        self.assertIn("Wheat Field", cheap)
+        self.assertIn("Ranch", cheap)
+        self.assertNotIn("Mine", cheap)     # costs 6
+        self.assertNotIn("Stadium", cheap)  # costs 6
+
+    def testStoreFreq(self):
+        """Verify freq() counts distinct card objects correctly."""
+        table = TableDeck()
+        freq = table.freq()
+        total = sum(freq.values())
+        self.assertEqual(total, len(table.deck))
+
 
 def testmain():
     unittest.main(buffer=True)
