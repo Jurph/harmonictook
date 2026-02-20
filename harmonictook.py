@@ -7,6 +7,7 @@ from __future__ import annotations
 import random
 import utility
 import argparse
+from functools import total_ordering
 
 class Player(object):
     """Base class for all players; holds bank, deck, and upgrade flags."""
@@ -100,9 +101,9 @@ class Player(object):
                 self.deduct(card.cost)
                 self.deck.append(card)
                 card.owner = self
-                print("{} bought a {} for {} coins, and now has {} coins.".format(self.name, card.name, card.cost, self.bank))
+                print(f"{self.name} bought a {card.name} for {card.cost} coins, and now has {self.bank} coins.")
             else:
-                print("Sorry: a {} costs {} and {} only has {}.".format(card.name, card.cost, self.name, self.bank))
+                print(f"Sorry: a {card.name} costs {card.cost} and {self.name} only has {self.bank}.")
                 return
         if isinstance(card,(Red, Green, Blue, TVStation, Stadium, BusinessCenter)):
             availableCards.deck.remove(card)
@@ -110,7 +111,7 @@ class Player(object):
             specials.remove(card)
             card.bestowPower()
         else:
-            print("Sorry: we don't have anything called '{}'.".format(name))
+            print(f"Sorry: we don't have anything called '{name}'.")
 
     def checkRemainingUpgrades(self) -> list:
         """Return a list of UpgradeCard objects for upgrades this player has not yet purchased."""
@@ -191,7 +192,7 @@ class Human(Player):
             return None
         print("Choose a target player:")
         for i, player in enumerate(valid_targets):
-            print("[{}] {} ({} coins)".format(i+1, player.name, player.bank))
+            print(f"[{i+1}] {player.name} ({player.bank} coins)")
         while True:
             try:
                 choice = int(input("Your selection: "))
@@ -283,6 +284,7 @@ class ThoughtfulBot(Bot):
 
 # === Define Class Card() === #
 # Cards must have a name, cost, a payer, a payout amount, and one or more die rolls on which they "hit"
+@total_ordering
 class Card(object):
     """Abstract base card; subclasses define payer/recipient logic and trigger behaviour."""
 
@@ -307,40 +309,14 @@ class Card(object):
         return value
 
     def __eq__(self, other: object) -> bool:
-        if self.sortvalue() == other.sortvalue():
-            return True
-        else:
-            return False
-
-    def __ne__(self, other: object) -> bool:
-        if self.sortvalue() == other.sortvalue():
-            return False
-        else:
-            return True
+        if not isinstance(other, Card):
+            return NotImplemented
+        return self.sortvalue() == other.sortvalue()
 
     def __lt__(self, other: object) -> bool:
-        if self.sortvalue() < other.sortvalue():
-            return True
-        else:
-            return False
-
-    def __le__(self, other: object) -> bool:
-        if self.sortvalue() <= other.sortvalue():
-            return True
-        else:
-            return False
-
-    def __gt__(self, other: object) -> bool:
-        if self.sortvalue() > other.sortvalue():
-            return True
-        else:
-            return False
-
-    def __ge__(self, other: object) -> bool:
-        if self.sortvalue() >= other.sortvalue():
-            return True
-        else:
-            return False
+        if not isinstance(other, Card):
+            return NotImplemented
+        return self.sortvalue() < other.sortvalue()
 
     def __hash__(self) -> int:
         return hash((self.name, self.category, self.cost))
@@ -352,7 +328,7 @@ class Card(object):
         # trying to do fixed width. Adding a space for padding and telling format() to display it
         # as single-width seems to work. There probably are other solutions, but this one works.
         catvalue = self.category
-        cardstring = "{:7} {:3} : {:16}".format(str(self.hitsOn), categories[catvalue], self.name)
+        cardstring = f"{str(self.hitsOn):7} {categories[catvalue]:3} : {self.name:16}"
         return cardstring
 
 class Green(Card):
@@ -379,19 +355,19 @@ class Green(Card):
                 if self.owner.hasShoppingMall and self.name == "Convenience Store":
                     payout_amount += 1
                 self.owner.deposit(payout_amount)
-                print("{} pays out {} to {}.".format(self.name, payout_amount, self.owner.name))
+                print(f"{self.name} pays out {payout_amount} to {self.owner.name}.")
             else:
                 for card in self.owner.deck.deck:
                     if card.category == self.multiplies:
                         subtotal += 1
                     else:
                         pass
-                print("{} has {} cards of type {}...".format(self.owner.name, subtotal, self.multiplies))
+                print(f"{self.owner.name} has {subtotal} cards of type {self.multiplies}...")
                 amount = self.payout * subtotal
-                print("{} pays out {} to {}.".format(self.name, amount, self.owner.name))
+                print(f"{self.name} pays out {amount} to {self.owner.name}.")
                 self.owner.deposit(amount)
         else:
-            print("{} didn't roll the dice - no payout from {}.".format(self.owner.name, self.name))
+            print(f"{self.owner.name} didn't roll the dice - no payout from {self.name}.")
 
 class Red(Card):
     """Red card: steals coins from the die-roller and gives them to the card owner."""
@@ -433,7 +409,7 @@ class Blue(Card):
 
     def trigger(self, players: list) -> None:
         """Deposit payout coins from the bank into the card owner's account."""
-        print("{} pays out {} to {}.".format(self.name, self.payout, self.owner.name))
+        print(f"{self.name} pays out {self.payout} to {self.owner.name}.")
         self.owner.deposit(self.payout)
 
 class Stadium(Card):
@@ -479,13 +455,13 @@ class TVStation(Card):
             else:
                 pass
         if dieroller == self.owner:
-            print("{} activates TV Station!".format(self.owner.name))
+            print(f"{self.owner.name} activates TV Station!")
             target = dieroller.chooseTarget(players)
             if target:
-                print("{} targets {}!".format(self.owner.name, target.name))
+                print(f"{self.owner.name} targets {target.name}!")
                 payment = target.deduct(self.payout)
                 dieroller.deposit(payment)
-                print("{} collected {} coins from {}.".format(self.owner.name, payment, target.name))
+                print(f"{self.owner.name} collected {payment} coins from {target.name}.")
             else:
                 print("No valid targets for TV Station.")
         else:
@@ -509,10 +485,10 @@ class BusinessCenter(Card):
             if person.isrollingdice:
                 dieroller = person
         if self.owner == dieroller:
-            print("{} activates Business Center!".format(self.owner.name))
+            print(f"{self.owner.name} activates Business Center!")
             # For bots, just give them coins since card swapping is complex
             if not isinstance(dieroller, Human):
-                print("{} gets 5 coins (bot doesn't swap cards).".format(dieroller.name))
+                print(f"{dieroller.name} gets 5 coins (bot doesn't swap cards).")
                 dieroller.deposit(5)
             else:
                 swap_choice = input("Do you want to swap cards? ([Y]es / [N]o) ")
@@ -525,11 +501,11 @@ class BusinessCenter(Card):
                         if my_cards and their_cards:
                             my_card = utility.userChoice([c.name for c in my_cards])
                             my_card_obj = [c for c in my_cards if c.name == my_card][0]
-                            print("Choose {}'s card to take:".format(target.name))
+                            print(f"Choose {target.name}'s card to take:")
                             their_card = utility.userChoice([c.name for c in their_cards])
                             their_card_obj = [c for c in their_cards if c.name == their_card][0]
                             dieroller.swap(my_card_obj, target, their_card_obj)
-                            print("Swapped {} for {}'s {}.".format(my_card, target.name, their_card))
+                            print(f"Swapped {my_card} for {target.name}'s {their_card}.")
                         else:
                             print("Not enough swappable cards.")
                     else:
@@ -619,7 +595,7 @@ class PlayerDeck(Store):
         decktext = ""
         for card in self.deck:
             if isinstance(card, (Red, Green, Blue)):
-                decktext += "{} - {}\n".format(card.hitsOn, card.name)
+                decktext += f"{card.hitsOn} - {card.name}\n"
             else:
                 decktext += str(card)
         return decktext
@@ -680,9 +656,9 @@ def setPlayers(players=None, bots: int = 0, humans: int = 0) -> list:
             print("Maximum 4 players. Trimming bots.")
             bots = max(0, 4 - humans)
         for i in range(humans):
-            playerlist.append(Human(name="Player{}".format(i + 1)))
+            playerlist.append(Human(name=f"Player{i + 1}"))
         for i in range(bots):
-            playerlist.append(ThoughtfulBot(name="Robo{}".format(i)))
+            playerlist.append(ThoughtfulBot(name=f"Robo{i}"))
         return playerlist
     elif players is None:
         moreplayers = True
@@ -730,10 +706,10 @@ def display(deckObject: Store) -> None:
     f = deckObject.freq()
     rowstring = ""
     for card, quantity in f.items():
-        rowstring += "{:16}".format((str(card) + "|"))
+        rowstring += f"{str(card) + '|':16}"
         for _ in range(quantity):
             rowstring += "[]"
-        rowstring += str(quantity) + "\n"
+        rowstring += f"{quantity}\n"
     print(rowstring)
 
 def newGame(players=None, bots: int = 0, humans: int = 0) -> tuple:
@@ -768,26 +744,26 @@ def nextTurn(playerlist: list, player: Player, availableCards: Store, specialCar
             print("WARN: Somehow left the truth table")
 
     # Die Rolling Phase
-    print("-=-=-= It's {}'s turn =-=-=-".format(player.name))
+    print(f"-=-=-= It's {player.name}'s turn =-=-=-")
     dieroll, isDoubles = player.dieroll()
-    print("{} rolled a {}.".format(player.name, dieroll))
+    print(f"{player.name} rolled a {dieroll}.")
 
     # Radio Tower re-roll option
     player._last_roll = dieroll  # Store for bot decision-making
     if player.chooseReroll():
-        print("{} uses the Radio Tower to re-roll!".format(player.name))
+        print(f"{player.name} uses the Radio Tower to re-roll!")
         dieroll, isDoubles = player.dieroll()
-        print("{} rolled a {}.".format(player.name, dieroll))
+        print(f"{player.name} rolled a {dieroll}.")
     for person in playerlist:
         for card in person.deck.deck:
             if dieroll in card.hitsOn:
-                print("{}'s {} activates on a {}...".format(person.name, card.name, dieroll))
+                print(f"{person.name}'s {card.name} activates on a {dieroll}...")
                 card.trigger(playerlist)
 
     # Buy Phase
     for person in playerlist:
-        print("{} now has {} coins.".format(person.name, person.bank))
-    print("-=-=-={}'s Deck=-=-=-".format(player.name))
+        print(f"{person.name} now has {person.bank} coins.")
+    print(f"-=-=-={player.name}'s Deck=-=-=-")
     display(player.deck)
 
     action = player.chooseAction(availableCards)
@@ -797,32 +773,9 @@ def nextTurn(playerlist: list, player: Player, availableCards: Store, specialCar
         if cardname is not None:
             player.buy(cardname, availableCards)
     elif action == 'pass':
-        print("{} passes this turn.".format(player.name))
+        print(f"{player.name} passes this turn.")
 
     return isDoubles
-
-def functionalTest():
-    playerlist = []
-    playerlist.append(Human("Jurph"))
-    jurph = playerlist[0]
-    availableCards = TableDeck()
-    for card in jurph.deck.deck:
-        print(card)
-    print("Right now {} has {} coins.".format(playerlist[0].name, playerlist[0].bank))
-    dieroll = jurph.dieroll(1)
-    print("{} rolled a {}...".format(playerlist[0].name, dieroll))
-    for card in jurph.deck.deck:
-        if dieroll in card.hitsOn:
-            card.trigger(card.owner)
-    print("Right now {} has {} coins.".format(playerlist[0].name, playerlist[0].bank))
-    jurph.buy("Mine", availableCards)
-    jurph.buy("Duck", availableCards)
-    jurph.buy("Forest", availableCards)
-    jurph.buy("Ranch", availableCards)
-    for card in jurph.deck.deck:
-        print(card)
-    print("-=-=-=-=-=-")
-
 
 def main():
     # Pull in command-line input
@@ -838,17 +791,17 @@ def main():
             isDoubles = nextTurn(playerlist, turntaker, availableCards, specialCards)
             if turntaker.isWinner():
                 noWinnerYet = False
-                print("{} wins!".format(turntaker.name))
+                print(f"{turntaker.name} wins!")
                 exit()
             else:
                 pass
             # Amusement Park: extra turn on doubles
             while isDoubles and turntaker.hasAmusementPark:
-                print("{} rolled doubles and gets to go again!".format(turntaker.name))
+                print(f"{turntaker.name} rolled doubles and gets to go again!")
                 isDoubles = nextTurn(playerlist, turntaker, availableCards, specialCards)
                 if turntaker.isWinner():
                     noWinnerYet = False
-                    print("{} wins!".format(turntaker.name))
+                    print(f"{turntaker.name} wins!")
                     exit()
 
 

@@ -4,7 +4,7 @@
 
 import unittest
 from unittest.mock import patch
-from harmonictook import newGame, Player, Bot, Human
+from harmonictook import newGame, Player, Bot, Human, ThoughtfulBot, setPlayers
 
 
 class TestPlayerBasics(unittest.TestCase):

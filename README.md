@@ -10,9 +10,9 @@
 # Does it work? 
 [![CircleCI Badge](https://circleci.com/gh/Jurph/harmonictook.svg?style=shield&circletoken=865dd863ff6582b56c01424e84fdeedfbc0e0d8e)](https://app.circleci.com/pipelines/github/Jurph/harmonictook)
 
-# STATUS: COMPLETE! ✅
+# STATUS: v0.9 Released 
 
-The game is now fully playable with all core mechanics implemented:
+The game is now playable with all core mechanics implemented:
 
 ## Completed Features:
 - ✅ Player turn menu ([B]uy, [P]ass, [S]how available cards)
