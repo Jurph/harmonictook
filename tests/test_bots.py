@@ -81,6 +81,38 @@ class TestBots(unittest.TestCase):
             result = thoughtful.chooseDice()
         self.assertEqual(result, 2)
 
+    def testBotChooseActionPass(self):
+        """Verify Bot.chooseAction() returns 'pass' when no cards are affordable."""
+        testbot = self.testbot
+        testbot.deduct(testbot.bank)  # drain to zero
+        self.assertEqual(testbot.chooseAction(self.availableCards), 'pass')
+
+    def testBotChooseCardEmpty(self):
+        """Verify Bot.chooseCard() returns None and doesn't crash on an empty options list."""
+        result = self.testbot.chooseCard([])
+        self.assertIsNone(result)
+
+    def testThoughtfulBotChooseCardEmpty(self):
+        """Verify ThoughtfulBot.chooseCard() returns None and doesn't crash on an empty options list."""
+        thoughtful = ThoughtfulBot(name="Thoughtful")
+        result = thoughtful.chooseCard([])
+        self.assertIsNone(result)
+
+    def testThoughtfulBotLateCardPriority(self):
+        """Verify ThoughtfulBot prefers late-game cards over early-game cards when Train Station is owned."""
+        thoughtful = ThoughtfulBot(name="Thoughtful")
+        thoughtful.hasTrainStation = True
+        # Mine is a latecard; Bakery is an earlycard — latecard should win
+        self.assertEqual(thoughtful.chooseCard(["Bakery", "Mine"]), "Mine")
+
+    def testThoughtfulBotRandomFallback(self):
+        """Verify ThoughtfulBot falls back to random.choice when no option matches any priority list."""
+        thoughtful = ThoughtfulBot(name="Thoughtful")
+        options = ["Curiosity Shop", "Duck Ranch"]  # neither is in any priority list
+        with patch('harmonictook.random.choice', return_value='Duck Ranch'):
+            result = thoughtful.chooseCard(options)
+        self.assertEqual(result, 'Duck Ranch')
+
 
 if __name__ == "__main__":
     unittest.main(buffer=True)

@@ -3,7 +3,7 @@
 # tests/test_cards.py — Card trigger mechanics and sort ordering tests
 
 import unittest
-from harmonictook import newGame, Blue, Green, Red, Card, Stadium
+from harmonictook import newGame, Blue, Green, Red, Card, Stadium, TVStation, BusinessCenter
 
 
 class TestCards(unittest.TestCase):
@@ -154,6 +154,45 @@ class TestCards(unittest.TestCase):
         self.assertEqual(otherbot_before - otherbot_after, 2)
 
 
+    def testTVStationNotRoller(self):
+        """Verify TVStation does not activate when its owner is not the die-roller."""
+        testbot = self.testbot
+        otherbot = self.otherbot
+        testbot.buy("TV Station", self.availableCards)
+        otherbot.isrollingdice = True
+        testbot.isrollingdice = False
+        before = testbot.bank
+        for card in testbot.deck.deck:
+            if isinstance(card, TVStation):
+                card.trigger(self.playerlist)
+        # No steal should have occurred
+        self.assertEqual(testbot.bank, before)
+
+    def testTVStationNoTargets(self):
+        """Verify TVStation activates but takes no action when there are no valid targets."""
+        testbot = self.testbot
+        testbot.buy("TV Station", self.availableCards)
+        testbot.isrollingdice = True
+        before = testbot.bank
+        for card in testbot.deck.deck:
+            if isinstance(card, TVStation):
+                card.trigger([testbot])  # only the roller in the list → no valid targets
+        self.assertEqual(testbot.bank, before)
+
+    def testBusinessCenterNotRoller(self):
+        """Verify BusinessCenter does not activate when its owner is not the die-roller."""
+        testbot = self.testbot
+        otherbot = self.otherbot
+        testbot.buy("Business Center", self.availableCards)
+        otherbot.isrollingdice = True
+        testbot.isrollingdice = False
+        before = testbot.bank
+        for card in testbot.deck.deck:
+            if isinstance(card, BusinessCenter):
+                card.trigger(self.playerlist)
+        self.assertEqual(testbot.bank, before)
+
+
 class TestCardOrdering(unittest.TestCase):
     """Tests for Card sort ordering and comparison operators."""
 
@@ -170,6 +209,25 @@ class TestCardOrdering(unittest.TestCase):
         self.assertLess(wheat, ranch)
         self.assertLess(ranch, forest)
         self.assertGreater(forest, bakery)
+
+    def testCardComparisonOperators(self):
+        """Verify __ne__, __le__, __gt__ (false branch), and __ge__ on Card."""
+        wheat = Blue("Wheat Field", 1, 1, 1, [1])
+        forest = Blue("Forest", 5, 3, 1, [5])
+        wheat2 = Blue("Wheat Field", 1, 1, 1, [1])  # identical sortvalue to wheat
+
+        self.assertNotEqual(wheat, forest)          # __ne__ True branch
+        self.assertFalse(wheat != wheat2)           # __ne__ False branch (equal sortvalues)
+
+        self.assertLessEqual(wheat, forest)         # __le__ True branch (strictly less)
+        self.assertLessEqual(wheat, wheat2)         # __le__ True branch (equal)
+        self.assertFalse(forest <= wheat)           # __le__ False branch
+
+        self.assertFalse(wheat > forest)            # __gt__ False branch
+
+        self.assertGreaterEqual(forest, wheat)      # __ge__ True branch (strictly greater)
+        self.assertGreaterEqual(wheat, wheat2)      # __ge__ True branch (equal)
+        self.assertFalse(wheat >= forest)           # __ge__ False branch
 
 
 if __name__ == "__main__":
