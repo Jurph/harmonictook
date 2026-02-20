@@ -120,6 +120,20 @@ class TestPlayerBuying(unittest.TestCase):
         self.assertEqual(len(testbot.checkRemainingUpgrades()), 0)
 
 
+    def testDeterministicDiceRoll(self):
+        """Verify dieroll() uses random.randint: non-equal rolls give sum/no-doubles, equal rolls give doubles."""
+        testbot = self.testbot
+        testbot.buy("Train Station", self.availableCards)
+        with patch('harmonictook.random.randint', side_effect=[3, 4]):
+            roll, isDoubles = testbot.dieroll()
+        self.assertEqual(roll, 7)
+        self.assertFalse(isDoubles)
+        with patch('harmonictook.random.randint', side_effect=[5, 5]):
+            roll, isDoubles = testbot.dieroll()
+        self.assertEqual(roll, 10)
+        self.assertTrue(isDoubles)
+
+
 class TestWinCondition(unittest.TestCase):
     """Tests for the isWinner() win detection logic."""
 

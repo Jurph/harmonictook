@@ -64,6 +64,23 @@ class TestBots(unittest.TestCase):
         choice = thoughtful.chooseCard(options)
         self.assertEqual(choice, "Radio Tower")
 
+    def testBotChooseCardMocked(self):
+        """Verify Bot.chooseCard() delegates card selection to random.choice."""
+        testbot = self.testbot
+        options = ["Ranch", "Wheat Field", "Mine"]
+        with patch('harmonictook.random.choice', return_value='Ranch'):
+            result = testbot.chooseCard(options)
+        self.assertEqual(result, 'Ranch')
+
+    def testThoughtfulBotChooseDice(self):
+        """Verify ThoughtfulBot returns 1 without Train Station and uses random.choice with it."""
+        thoughtful = ThoughtfulBot(name="Thoughtful")
+        self.assertEqual(thoughtful.chooseDice(), 1)
+        thoughtful.hasTrainStation = True
+        with patch('harmonictook.random.choice', return_value=2):
+            result = thoughtful.chooseDice()
+        self.assertEqual(result, 2)
+
 
 if __name__ == "__main__":
     unittest.main(buffer=True)
