@@ -247,5 +247,29 @@ class TestSetPlayers(unittest.TestCase):
         self.assertTrue(any('Y or N' in str(c) for c in mock_print.call_args_list))
 
 
+    def testDierollDefensivePath(self):
+        """Verify dieroll() returns (7, False) when chooseDice() returns an unexpected value."""
+        bot = Bot(name="WeirdDice")
+        with patch.object(bot, 'chooseDice', return_value=99):
+            result, is_doubles = bot.dieroll()
+        self.assertEqual(result, 7)
+        self.assertFalse(is_doubles)
+
+    def testGetDieRollerValueError(self):
+        """Verify get_die_roller() raises ValueError when no player has isrollingdice set."""
+        from harmonictook import get_die_roller
+        bot1 = Bot(name="A")
+        bot2 = Bot(name="B")
+        # Neither player has isrollingdice = True (default is False)
+        with self.assertRaises(ValueError):
+            get_die_roller([bot1, bot2])
+
+    def testGetDieRollerEmptyList(self):
+        """Verify get_die_roller() raises ValueError on an empty player list."""
+        from harmonictook import get_die_roller
+        with self.assertRaises(ValueError):
+            get_die_roller([])
+
+
 if __name__ == "__main__":
     unittest.main(buffer=True)

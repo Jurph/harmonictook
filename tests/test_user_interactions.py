@@ -120,5 +120,60 @@ class TestUserInteractions(unittest.TestCase):
         self.assertIs(result, bot)
 
 
+    @patch('builtins.print')
+    def testBusinessCenterHumanDeclines(self, mock_print):
+        """Verify Business Center does nothing when human declines the swap."""
+        from harmonictook import BusinessCenter, Game
+        game = Game(players=2)
+        human = Human(name="Swapper")
+        bot = Bot(name="Target")
+        human.isrollingdice = True
+        bot.isrollingdice = False
+        bc = BusinessCenter()
+        bc.owner = human
+        before_human = len(human.deck.deck)
+        before_bot = len(bot.deck.deck)
+        with patch('builtins.input', return_value='n'):
+            bc.trigger([human, bot])
+        self.assertEqual(len(human.deck.deck), before_human)
+        self.assertEqual(len(bot.deck.deck), before_bot)
+
+    @patch('builtins.print')
+    def testBusinessCenterHumanSwapsCards(self, mock_print):
+        """Verify Business Center swaps one card from each player when human accepts."""
+        from harmonictook import BusinessCenter, Blue
+        human = Human(name="Swapper")
+        bot = Bot(name="Target")
+        human.isrollingdice = True
+        bot.isrollingdice = False
+        # Give human a Ranch (not in bot's deck) so we can verify it moved
+        ranch = Blue("Ranch", 2, 1, 1, [2])
+        ranch.owner = human
+        human.deck.deck.append(ranch)
+        bc = BusinessCenter()
+        bc.owner = human
+        self.assertIn("Ranch", human.deck.names())
+        self.assertNotIn("Ranch", bot.deck.names())
+        # inputs: swap=y, target=1, give Ranch (index 3), take Wheat Field (index 1)
+        with patch('builtins.input', side_effect=['y', '1', '3', '1']):
+            bc.trigger([human, bot])
+        # Ranch should have moved from human to bot
+        self.assertNotIn("Ranch", human.deck.names())
+        self.assertIn("Ranch", bot.deck.names())
+
+    @patch('builtins.print')
+    def testBusinessCenterHumanNoTarget(self, mock_print):
+        """Verify Business Center handles swap gracefully when only the roller is present."""
+        from harmonictook import BusinessCenter
+        human = Human(name="Swapper")
+        human.isrollingdice = True
+        bc = BusinessCenter()
+        bc.owner = human
+        before = len(human.deck.deck)
+        with patch('builtins.input', return_value='y'):
+            bc.trigger([human])  # no valid targets
+        self.assertEqual(len(human.deck.deck), before)
+
+
 if __name__ == "__main__":
     unittest.main(buffer=True)

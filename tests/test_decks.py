@@ -46,5 +46,24 @@ class TestStoreOperations(unittest.TestCase):
         self.assertEqual(total, len(table.deck))
 
 
+    def testStoreAppendNonCard(self):
+        """Verify Store.append() silently ignores non-Card objects (known bug: TypeError is created but not raised)."""
+        table = TableDeck()
+        size_before = len(table.deck)
+        table.append("not a card")
+        table.append(42)
+        table.append(None)
+        # Bug: TypeError() is instantiated but never raised; deck should be unchanged
+        self.assertEqual(len(table.deck), size_before)
+
+    def testStoreRemoveNonCard(self):
+        """Verify Store.remove() silently ignores non-Card objects (known bug: TypeError is created but not raised)."""
+        table = TableDeck()
+        size_before = len(table.deck)
+        table.remove("not a card")
+        table.remove(42)
+        self.assertEqual(len(table.deck), size_before)
+
+
 if __name__ == "__main__":
     unittest.main(buffer=True)

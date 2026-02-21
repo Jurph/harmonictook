@@ -154,6 +154,19 @@ class TestCards(unittest.TestCase):
         self.assertEqual(otherbot_before - otherbot_after, 2)
 
 
+    def testShoppingMallConvenienceStore(self):
+        """Verify Shopping Mall adds +1 to Convenience Store payout (Green card path)."""
+        testbot = self.testbot
+        testbot.buy("Convenience Store", self.game.market)
+        testbot.buy("Shopping Mall", self.game.market)
+        testbot.isrollingdice = True
+        before = testbot.bank
+        for card in testbot.deck.deck:
+            if 4 in card.hitsOn and isinstance(card, Green):
+                card.trigger(self.game.players)
+        # Convenience Store normally pays 3; with Shopping Mall should pay 4
+        self.assertEqual(testbot.bank - before, 4)
+
     def testTVStationNotRoller(self):
         """Verify TVStation does not activate when its owner is not the die-roller."""
         testbot = self.testbot
@@ -228,6 +241,33 @@ class TestCardOrdering(unittest.TestCase):
         self.assertGreaterEqual(forest, wheat)      # __ge__ True branch (strictly greater)
         self.assertGreaterEqual(wheat, wheat2)      # __ge__ True branch (equal)
         self.assertFalse(wheat >= forest)           # __ge__ False branch
+
+    def testCardComparisonWithNonCard(self):
+        """Verify __eq__ and __lt__ return NotImplemented (not an exception) when compared to a non-Card."""
+        wheat = Blue("Wheat Field", 1, 1, 1, [1])
+        # Directly invoke the dunder methods; Python returns False for == but the method itself returns NotImplemented
+        self.assertIs(wheat.__eq__("string"), NotImplemented)
+        self.assertIs(wheat.__eq__(42), NotImplemented)
+        self.assertIs(wheat.__eq__(None), NotImplemented)
+        self.assertIs(wheat.__lt__("string"), NotImplemented)
+        self.assertIs(wheat.__lt__(42), NotImplemented)
+        # Normal == operator with non-Card should resolve to False without raising
+        self.assertFalse(wheat == "string")
+        self.assertFalse(wheat == 42)
+        self.assertFalse(wheat == None)
+
+    def testCardBaseInit(self):
+        """Verify the base Card() constructor is instantiable and all fields start at their defaults."""
+        card = Card()
+        self.assertIsNone(card.name)
+        self.assertIsNone(card.payer)
+        self.assertIsNone(card.recipient)
+        self.assertEqual(card.cost, 0)
+        self.assertEqual(card.payout, 0)
+        self.assertEqual(card.hitsOn, [0])
+        self.assertIsNone(card.owner)
+        self.assertIsNone(card.category)
+        self.assertIsNone(card.multiplies)
 
 
 if __name__ == "__main__":
