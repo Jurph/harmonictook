@@ -3,7 +3,7 @@
 # tests/test_decks.py — Store, PlayerDeck, and TableDeck tests
 
 import unittest
-from harmonictook import Game, TableDeck
+from harmonictook import Game, TableDeck, UpgradeCard
 
 
 class TestStoreOperations(unittest.TestCase):
@@ -55,6 +55,19 @@ class TestStoreOperations(unittest.TestCase):
         table.append(None)
         # Bug: TypeError() is instantiated but never raised; deck should be unchanged
         self.assertEqual(len(table.deck), size_before)
+
+    def testPlayerDeckStrWithUpgradeCard(self):
+        """Verify PlayerDeck.__str__() uses str(card) for UpgradeCards without raising."""
+        player = Game(players=2).players[0]
+        upgrade = UpgradeCard("Train Station")
+        upgrade.owner = player
+        player.deck.deck.append(upgrade)
+        result = str(player.deck)
+        # Wheat Field and Bakery go through the Red/Green/Blue branch
+        self.assertIn("Wheat Field", result)
+        self.assertIn("Bakery", result)
+        # Train Station goes through the else → str(card) branch
+        self.assertIn("Train Station", result)
 
     def testStoreRemoveNonCard(self):
         """Verify Store.remove() silently ignores non-Card objects (known bug: TypeError is created but not raised)."""

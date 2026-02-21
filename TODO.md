@@ -220,9 +220,9 @@ Remaining testing work:
 6. ✅ **dieroll() edge case** — When `chooseDice()` returns something other than 1 or 2, returns `7, False`. One test that triggers this defensive path.
 7. ✅ **Card base __init__** — Base Card() constructor. Subclasses override it; ensures base is constructible.
 8. ✅ **get_die_roller() ValueError** — Call with no player having `isrollingdice`; assert ValueError.
-9. **PlayerDeck.__str__ with UpgradeCards** — Deck string when it contains landmarks. Currently only Red/Green/Blue path exercised.
-10. **Game.get_purchase_options()** — Assert it returns affordable card names for current player.
-11. **Game.run()** — Full game loop, win detection, Amusement Park doubles. Needs mocked dice for deterministic run-to-win.
-12. **main()** — Entry point. Low value; optional.
-13. **Market refresh branch** — The truth-table edge case in Game.refresh_market(). One test that drives that condition.
-14. **Add tests/test_game.py** — Dedicated suite for Game class (creation, next_turn, refresh_market, run with mocks).
+9. ✅ **PlayerDeck.__str__ with UpgradeCards** — Deck string when it contains landmarks. Currently only Red/Green/Blue path exercised.
+10. ✅ **Game.get_purchase_options()** — Assert it returns affordable card names for current player.
+11. ✅ **Game.run()** — Full game loop, win detection, Amusement Park doubles. Needs mocked dice for deterministic run-to-win.
+12. ✅ **main()** — Entry point. Low value; optional.
+13. ✅ **Market refresh branch** — The truth-table edge case in Game.refresh_market(). One test that drives that condition.
+14. ✅ **Add tests/test_game.py** — Dedicated suite for Game class (creation, next_turn, refresh_market, run with mocks).

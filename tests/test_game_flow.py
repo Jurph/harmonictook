@@ -64,5 +64,57 @@ class TestGameFlow(unittest.TestCase):
         self.assertNotIn("TV Station", self.game.market.names())
 
 
+    def testGetPurchaseOptionsAffordable(self):
+        """Verify get_purchase_options() returns only cards the current player can afford."""
+        player = self.game.players[0]
+        # With 3 starting coins, only cards costing ≤ 3 should appear
+        options = self.game.get_purchase_options()
+        for name in options:
+            card = next(c for c in self.game.market.deck if c.name == name)
+            self.assertLessEqual(card.cost, player.bank)
+
+    def testGetPurchaseOptionsEmpty(self):
+        """Verify get_purchase_options() returns an empty list when the current player is broke."""
+        player = self.game.players[0]
+        player.deduct(player.bank)  # drain to zero
+        options = self.game.get_purchase_options()
+        self.assertEqual(options, [])
+
+    @patch('builtins.print')
+    def testRunSimpleWin(self, mock_print):
+        """Verify run() sets game.winner and exits when a player holds all four upgrades."""
+        player = self.game.players[0]
+        player.hasTrainStation = True
+        player.hasShoppingMall = True
+        player.hasAmusementPark = True
+        player.hasRadioTower = True
+        self.game.run()
+        self.assertIs(self.game.winner, player)
+
+    @patch('builtins.print')
+    def testRunAmusementParkDoublesLoop(self, mock_print):
+        """Verify run() gives a player an extra turn when they roll doubles and own Amusement Park."""
+        player = self.game.players[0]
+        player.hasAmusementPark = True
+        call_count = [0]
+
+        def mock_next_turn():
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return True  # doubles on first turn → triggers Amusement Park loop
+            # On the extra Amusement Park turn, give the player all upgrades so the game ends
+            player.hasTrainStation = True
+            player.hasShoppingMall = True
+            player.hasAmusementPark = True
+            player.hasRadioTower = True
+            return False
+
+        with patch.object(self.game, 'next_turn', side_effect=mock_next_turn):
+            self.game.run()
+
+        self.assertGreaterEqual(call_count[0], 2)
+        self.assertIs(self.game.winner, player)
+
+
 if __name__ == "__main__":
     unittest.main(buffer=True)
