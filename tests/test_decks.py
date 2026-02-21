@@ -3,15 +3,14 @@
 # tests/test_decks.py — Store, PlayerDeck, and TableDeck tests
 
 import unittest
-from harmonictook import newGame, TableDeck
+from harmonictook import Game, TableDeck
 
 
 class TestStoreOperations(unittest.TestCase):
     """Tests for Store, PlayerDeck, and TableDeck query methods."""
 
     def setUp(self):
-        _, _, playerlist = newGame(2)
-        self.bot = playerlist[0]
+        self.bot = Game(players=2).players[0]
 
     def testPlayerDeckStartingCards(self):
         """Verify a new PlayerDeck contains exactly Wheat Field and Bakery."""

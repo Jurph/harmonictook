@@ -4,7 +4,7 @@
 
 import unittest
 from unittest.mock import patch
-from harmonictook import newGame, Bot, ThoughtfulBot, TVStation, BusinessCenter
+from harmonictook import Game, Bot, ThoughtfulBot, TVStation, BusinessCenter
 
 
 class TestBots(unittest.TestCase):
@@ -12,16 +12,16 @@ class TestBots(unittest.TestCase):
 
     def setUp(self):
         self.players = 2
-        self.availableCards, self.specialCards, self.playerlist = newGame(self.players)
-        self.testbot = self.playerlist[0]
-        self.otherbot = self.playerlist[1]
+        self.game = Game(players=self.players)
+        self.testbot = self.game.players[0]
+        self.otherbot = self.game.players[1]
         self.testbot.deposit(100)
         self.otherbot.deposit(100)
 
     def testRadioTowerReroll(self):
         """Verify Bot.chooseReroll() returns True on rolls ≤4 and False on rolls ≥5 when Radio Tower is owned."""
         testbot = self.testbot
-        testbot.buy("Radio Tower", self.availableCards)
+        testbot.buy("Radio Tower", self.game.market)
         testbot._last_roll = 3
         self.assertTrue(testbot.chooseReroll())
         testbot._last_roll = 9
@@ -31,14 +31,14 @@ class TestBots(unittest.TestCase):
         """Verify TV Station steals exactly 5 coins (or all if target has fewer) from the chosen target."""
         testbot = self.testbot
         otherbot = self.otherbot
-        testbot.buy("TV Station", self.availableCards)
+        testbot.buy("TV Station", self.game.market)
         testbot.isrollingdice = True
         otherbot.isrollingdice = False
         before = testbot.bank
         otherbot_before = otherbot.bank
         for card in testbot.deck.deck:
             if isinstance(card, TVStation):
-                card.trigger(self.playerlist)
+                card.trigger(self.game.players)
         after = testbot.bank
         otherbot_after = otherbot.bank
         stolen = min(5, otherbot_before)
@@ -48,12 +48,12 @@ class TestBots(unittest.TestCase):
     def testBusinessCenterBot(self):
         """Verify Business Center gives a bot 5 coins in lieu of the card-swap interaction."""
         testbot = self.testbot
-        testbot.buy("Business Center", self.availableCards)
+        testbot.buy("Business Center", self.game.market)
         testbot.isrollingdice = True
         before = testbot.bank
         for card in testbot.deck.deck:
             if isinstance(card, BusinessCenter):
-                card.trigger(self.playerlist)
+                card.trigger(self.game.players)
         after = testbot.bank
         self.assertEqual(after - before, 5)
 
@@ -85,7 +85,7 @@ class TestBots(unittest.TestCase):
         """Verify Bot.chooseAction() returns 'pass' when no cards are affordable."""
         testbot = self.testbot
         testbot.deduct(testbot.bank)  # drain to zero
-        self.assertEqual(testbot.chooseAction(self.availableCards), 'pass')
+        self.assertEqual(testbot.chooseAction(self.game.market), 'pass')
 
     def testBotChooseCardEmpty(self):
         """Verify Bot.chooseCard() returns None and doesn't crash on an empty options list."""

@@ -3,7 +3,7 @@
 # tests/test_cards.py — Card trigger mechanics and sort ordering tests
 
 import unittest
-from harmonictook import newGame, Blue, Green, Red, Card, Stadium, TVStation, BusinessCenter
+from harmonictook import Game, Blue, Green, Red, Card, Stadium, TVStation, BusinessCenter
 
 
 class TestCards(unittest.TestCase):
@@ -11,9 +11,9 @@ class TestCards(unittest.TestCase):
 
     def setUp(self):
         self.players = 2
-        self.availableCards, self.specialCards, self.playerlist = newGame(self.players)
-        self.testbot = self.playerlist[0]
-        self.otherbot = self.playerlist[1]
+        self.game = Game(players=self.players)
+        self.testbot = self.game.players[0]
+        self.otherbot = self.game.players[1]
         self.testbot.deposit(100)
         self.otherbot.deposit(100)
 
@@ -27,17 +27,17 @@ class TestCards(unittest.TestCase):
         self.assertEqual(bluecard.hitsOn[0], 11)
         self.assertEqual(bluecard.cost, 1)
         for _ in range(4):
-            self.availableCards.append(Blue("Dark Blue Card", 2, 1, 1, [11, 12]))
-        testbot.buy("Dark Blue Card", self.availableCards)
-        otherbot.buy("Dark Blue Card", self.availableCards)
+            self.game.market.append(Blue("Dark Blue Card", 2, 1, 1, [11, 12]))
+        testbot.buy("Dark Blue Card", self.game.market)
+        otherbot.buy("Dark Blue Card", self.game.market)
         testbot.isrollingdice = True
         before = testbot.bank
         otherbefore = otherbot.bank
         for dieroll in range(10, 13):
-            for bot in self.playerlist:
+            for bot in self.game.players:
                 for card in bot.deck.deck:
                     if dieroll in card.hitsOn:
-                        card.trigger(self.playerlist)
+                        card.trigger(self.game.players)
         after = testbot.bank
         otherafter = otherbot.bank
         self.assertEqual(after - before, 2)
@@ -51,20 +51,20 @@ class TestCards(unittest.TestCase):
         self.assertIsInstance(greencard, Card)
         self.assertIsInstance(greencard, Green)
         for _ in range(6):
-            self.availableCards.append(Blue("Light Blue Card", 77, 1, 1, [11]))
-            self.availableCards.append(Green("Green Card", 3, 1, 5, [12], 77))
-        testbot.buy("Light Blue Card", self.availableCards)
-        testbot.buy("Light Blue Card", self.availableCards)
-        otherbot.buy("Blue Card", self.availableCards)
-        testbot.buy("Green Card", self.availableCards)
-        otherbot.buy("Green Card", self.availableCards)
+            self.game.market.append(Blue("Light Blue Card", 77, 1, 1, [11]))
+            self.game.market.append(Green("Green Card", 3, 1, 5, [12], 77))
+        testbot.buy("Light Blue Card", self.game.market)
+        testbot.buy("Light Blue Card", self.game.market)
+        otherbot.buy("Blue Card", self.game.market)
+        testbot.buy("Green Card", self.game.market)
+        otherbot.buy("Green Card", self.game.market)
         testbot.isrollingdice = True
         before = testbot.bank
         for dieroll in range(10, 13):
-            for bot in self.playerlist:
+            for bot in self.game.players:
                 for card in bot.deck.deck:
                     if dieroll in card.hitsOn:
-                        card.trigger(self.playerlist)
+                        card.trigger(self.game.players)
         after = testbot.bank
         self.assertEqual(after - before, 12)
 
@@ -76,17 +76,17 @@ class TestCards(unittest.TestCase):
         self.assertIsInstance(redcard, Card)
         self.assertIsInstance(redcard, Red)
         for _ in range(3):
-            self.availableCards.append(Red("Crimson Card", 2, 2, 10, [1,2,3,4,5]))
-        otherbot.buy("Crimson Card", self.availableCards)
-        testbot.buy("Crimson Card", self.availableCards)
+            self.game.market.append(Red("Crimson Card", 2, 2, 10, [1,2,3,4,5]))
+        otherbot.buy("Crimson Card", self.game.market)
+        testbot.buy("Crimson Card", self.game.market)
         testbot.isrollingdice = True
         before = testbot.bank
         otherbefore = otherbot.bank
         for dieroll in range(1, 13):
-           for bot in self.playerlist:
+           for bot in self.game.players:
                 for card in bot.deck.deck:
                     if dieroll in card.hitsOn:
-                        card.trigger(self.playerlist)
+                        card.trigger(self.game.players)
         after = testbot.bank
         otherafter = otherbot.bank
         self.assertEqual(after-before, 3)
@@ -96,22 +96,22 @@ class TestCards(unittest.TestCase):
         """Verify correct cumulative payouts when multiple card types activate in one round."""
         testbot = self.testbot
         otherbot = self.otherbot
-        testbot.buy("Wheat Field", self.availableCards)
-        otherbot.buy("Wheat Field", self.availableCards)
-        testbot.buy("Ranch", self.availableCards)
-        otherbot.buy("Ranch", self.availableCards)
-        testbot.buy("Forest", self.availableCards)
-        otherbot.buy("Forest", self.availableCards)
-        testbot.buy("Mine", self.availableCards)
-        otherbot.buy("Mine", self.availableCards)
-        testbot.buy("Apple Orchard", self.availableCards)
-        otherbot.buy("Apple Orchard", self.availableCards)
+        testbot.buy("Wheat Field", self.game.market)
+        otherbot.buy("Wheat Field", self.game.market)
+        testbot.buy("Ranch", self.game.market)
+        otherbot.buy("Ranch", self.game.market)
+        testbot.buy("Forest", self.game.market)
+        otherbot.buy("Forest", self.game.market)
+        testbot.buy("Mine", self.game.market)
+        otherbot.buy("Mine", self.game.market)
+        testbot.buy("Apple Orchard", self.game.market)
+        otherbot.buy("Apple Orchard", self.game.market)
         testbot.dieroll()
         for dieroll in range(1, 12):
-            for bot in self.playerlist:
+            for bot in self.game.players:
                 for card in bot.deck.deck:
                     if dieroll in card.hitsOn:
-                        card.trigger(self.playerlist)
+                        card.trigger(self.game.players)
         # Testbot should end up with 89 + 1 + 2 + 1 + 1 + 1 + 3 + 5 = 103
         # Otherbot does not have a bakery and should end up with 101
         self.assertEqual(testbot.bank, 103)
@@ -121,15 +121,15 @@ class TestCards(unittest.TestCase):
         """Verify Stadium collects 2 coins from each player and credits them all to the die-roller."""
         testbot = self.testbot
         otherbot = self.otherbot
-        self.availableCards.append(Stadium())
-        testbot.buy("Stadium", self.availableCards)
+        self.game.market.append(Stadium())
+        testbot.buy("Stadium", self.game.market)
         testbot.isrollingdice = True
         otherbot.isrollingdice = False
         before = testbot.bank
         otherbot_before = otherbot.bank
         for card in testbot.deck.deck:
             if isinstance(card, Stadium):
-                card.trigger(self.playerlist)
+                card.trigger(self.game.players)
         # With 2 players: roller deducts from self (net 0) and collects 2 from other → net +2
         self.assertEqual(testbot.bank - before, 2)
         self.assertEqual(otherbot_before - otherbot.bank, 2)
@@ -138,15 +138,15 @@ class TestCards(unittest.TestCase):
         """Verify Shopping Mall adds +1 to Cafe payout when owner holds the upgrade."""
         testbot = self.testbot
         otherbot = self.otherbot
-        testbot.buy("Cafe", self.availableCards)
-        testbot.buy("Shopping Mall", self.availableCards)
+        testbot.buy("Cafe", self.game.market)
+        testbot.buy("Shopping Mall", self.game.market)
         otherbot.isrollingdice = True
         testbot.isrollingdice = False
         before = testbot.bank
         otherbot_before = otherbot.bank
         for card in testbot.deck.deck:
             if 3 in card.hitsOn and isinstance(card, Red):
-                card.trigger(self.playerlist)
+                card.trigger(self.game.players)
         after = testbot.bank
         otherbot_after = otherbot.bank
         # Cafe normally pays 1, but with Shopping Mall should pay 2
@@ -158,20 +158,20 @@ class TestCards(unittest.TestCase):
         """Verify TVStation does not activate when its owner is not the die-roller."""
         testbot = self.testbot
         otherbot = self.otherbot
-        testbot.buy("TV Station", self.availableCards)
+        testbot.buy("TV Station", self.game.market)
         otherbot.isrollingdice = True
         testbot.isrollingdice = False
         before = testbot.bank
         for card in testbot.deck.deck:
             if isinstance(card, TVStation):
-                card.trigger(self.playerlist)
+                card.trigger(self.game.players)
         # No steal should have occurred
         self.assertEqual(testbot.bank, before)
 
     def testTVStationNoTargets(self):
         """Verify TVStation activates but takes no action when there are no valid targets."""
         testbot = self.testbot
-        testbot.buy("TV Station", self.availableCards)
+        testbot.buy("TV Station", self.game.market)
         testbot.isrollingdice = True
         before = testbot.bank
         for card in testbot.deck.deck:
@@ -183,13 +183,13 @@ class TestCards(unittest.TestCase):
         """Verify BusinessCenter does not activate when its owner is not the die-roller."""
         testbot = self.testbot
         otherbot = self.otherbot
-        testbot.buy("Business Center", self.availableCards)
+        testbot.buy("Business Center", self.game.market)
         otherbot.isrollingdice = True
         testbot.isrollingdice = False
         before = testbot.bank
         for card in testbot.deck.deck:
             if isinstance(card, BusinessCenter):
-                card.trigger(self.playerlist)
+                card.trigger(self.game.players)
         self.assertEqual(testbot.bank, before)
 
 

@@ -4,7 +4,7 @@
 
 import unittest
 from unittest.mock import patch
-from harmonictook import newGame, Player, Bot, Human, ThoughtfulBot, setPlayers
+from harmonictook import Game, Player, Bot, Human, ThoughtfulBot, setPlayers
 
 
 class TestPlayerBasics(unittest.TestCase):
@@ -12,13 +12,13 @@ class TestPlayerBasics(unittest.TestCase):
 
     def setUp(self):
         self.players = 2
-        self.availableCards, self.specialCards, self.playerlist = newGame(self.players)
-        self.testbot = self.playerlist[0]
-        self.otherbot = self.playerlist[1]
+        self.game = Game(players=self.players)
+        self.testbot = self.game.players[0]
+        self.otherbot = self.game.players[1]
 
     def testPlayerCreation(self):
         """Verify correct player count, type, name, and starting bank."""
-        self.assertEqual(len(self.playerlist), self.players)
+        self.assertEqual(len(self.game.players), self.players)
         self.assertIsInstance(self.testbot, Player)
         self.assertIsInstance(self.testbot, Bot)
         self.assertIsNot(self.testbot, Human)
@@ -39,7 +39,7 @@ class TestPlayerBasics(unittest.TestCase):
         """Verify chooseDice obeys Train Station, and two-die rolls average to 7."""
         self.assertEqual(self.testbot.chooseDice(), 1)
         self.testbot.deposit(10)
-        self.testbot.buy("Train Station", self.availableCards)
+        self.testbot.buy("Train Station", self.game.market)
         self.assertEqual(self.testbot.chooseDice(), 2)
         sum = 0
         for _ in range(100000):
@@ -53,16 +53,16 @@ class TestPlayerBuying(unittest.TestCase):
 
     def setUp(self):
         self.players = 2
-        self.availableCards, self.specialCards, self.playerlist = newGame(self.players)
-        self.testbot = self.playerlist[0]
-        self.otherbot = self.playerlist[1]
+        self.game = Game(players=self.players)
+        self.testbot = self.game.players[0]
+        self.otherbot = self.game.players[1]
         self.testbot.deposit(100)
         self.otherbot.deposit(100)
 
     def testAmusementParkDoubles(self):
         """Verify dieroll() can return isDoubles=True at least once in 200 two-die rolls."""
         testbot = self.testbot
-        testbot.buy("Train Station", self.availableCards)
+        testbot.buy("Train Station", self.game.market)
         self.assertTrue(testbot.hasTrainStation)
         found_doubles = False
         for _ in range(200):
@@ -78,22 +78,22 @@ class TestPlayerBuying(unittest.TestCase):
         testbot.deduct(testbot.bank)
         testbot.deposit(1)
         bank_before = testbot.bank
-        testbot.buy("Forest", self.availableCards)  # costs 3
+        testbot.buy("Forest", self.game.market)  # costs 3
         self.assertEqual(testbot.bank, bank_before)
 
     def testBuyNonexistentCard(self):
         """Verify buy() does not crash and leaves the bank unchanged for an unknown card name."""
         testbot = self.testbot
         bank_before = testbot.bank
-        testbot.buy("Totally Fake Card", self.availableCards)
+        testbot.buy("Totally Fake Card", self.game.market)
         self.assertEqual(testbot.bank, bank_before)
 
     def testPlayerSwap(self):
         """Verify swap() moves cards between players and updates ownership correctly."""
         testbot = self.testbot
         otherbot = self.otherbot
-        testbot.buy("Forest", self.availableCards)
-        otherbot.buy("Ranch", self.availableCards)
+        testbot.buy("Forest", self.game.market)
+        otherbot.buy("Ranch", self.game.market)
         forest = next(c for c in testbot.deck.deck if c.name == "Forest")
         ranch = next(c for c in otherbot.deck.deck if c.name == "Ranch")
         testbot.swap(forest, otherbot, ranch)
@@ -110,20 +110,20 @@ class TestPlayerBuying(unittest.TestCase):
         """Verify checkRemainingUpgrades() shrinks by one each time an upgrade is purchased."""
         testbot = self.testbot
         self.assertEqual(len(testbot.checkRemainingUpgrades()), 4)
-        testbot.buy("Train Station", self.availableCards)
+        testbot.buy("Train Station", self.game.market)
         self.assertEqual(len(testbot.checkRemainingUpgrades()), 3)
-        testbot.buy("Shopping Mall", self.availableCards)
+        testbot.buy("Shopping Mall", self.game.market)
         self.assertEqual(len(testbot.checkRemainingUpgrades()), 2)
-        testbot.buy("Amusement Park", self.availableCards)
+        testbot.buy("Amusement Park", self.game.market)
         self.assertEqual(len(testbot.checkRemainingUpgrades()), 1)
-        testbot.buy("Radio Tower", self.availableCards)
+        testbot.buy("Radio Tower", self.game.market)
         self.assertEqual(len(testbot.checkRemainingUpgrades()), 0)
 
 
     def testDeterministicDiceRoll(self):
         """Verify dieroll() uses random.randint: non-equal rolls give sum/no-doubles, equal rolls give doubles."""
         testbot = self.testbot
-        testbot.buy("Train Station", self.availableCards)
+        testbot.buy("Train Station", self.game.market)
         with patch('harmonictook.random.randint', side_effect=[3, 4]):
             roll, isDoubles = testbot.dieroll()
         self.assertEqual(roll, 7)
@@ -138,8 +138,7 @@ class TestWinCondition(unittest.TestCase):
     """Tests for the isWinner() win detection logic."""
 
     def setUp(self):
-        _, _, playerlist = newGame(2)
-        self.bot = playerlist[0]
+        self.bot = Game(players=2).players[0]
         self.bot.deposit(100)
 
     def testIsWinner(self):

@@ -4,7 +4,7 @@
 
 import unittest
 from unittest.mock import patch
-from harmonictook import newGame, Human, Bot, Player
+from harmonictook import Game, Human, Bot, Player
 
 
 class TestUserInteractions(unittest.TestCase):
@@ -40,7 +40,7 @@ class TestUserInteractions(unittest.TestCase):
 
     def testHumanChooseAction(self):
         """Verify Human.chooseAction() returns 'buy' for 'b' and 'pass' for 'p'."""
-        availableCards, _, _ = newGame(2)
+        availableCards = Game(players=2).market
         human = Human(name="TestHuman")
         with patch('builtins.input', return_value='b'):
             self.assertEqual(human.chooseAction(availableCards), 'buy')
@@ -50,7 +50,7 @@ class TestUserInteractions(unittest.TestCase):
     @patch('builtins.print')
     def testHumanChooseActionShowCards(self, mock_print):
         """Verify chooseAction() displays the market on 's' and then loops back for a real choice."""
-        availableCards, _, _ = newGame(2)
+        availableCards = Game(players=2).market
         human = Human(name="TestHuman")
         with patch('builtins.input', side_effect=['s', 'b']):
             result = human.chooseAction(availableCards)
@@ -59,7 +59,7 @@ class TestUserInteractions(unittest.TestCase):
     @patch('builtins.print')
     def testHumanChooseActionUnknownInput(self, mock_print):
         """Verify chooseAction() prints an error and loops when input contains no valid key."""
-        availableCards, _, _ = newGame(2)
+        availableCards = Game(players=2).market
         human = Human(name="TestHuman")
         with patch('builtins.input', side_effect=['x', 'p']):
             result = human.chooseAction(availableCards)
