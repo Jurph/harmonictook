@@ -1,6 +1,6 @@
 # TODO for harmonictook
 
-## Features
+## Feature Arcs 
 
 ### Rich Bot Design
 **Dynamic card-valuation framework to support flexible bot strategies**
@@ -77,87 +77,159 @@ Architecture:
 
 ## Tech Debt / Quality
 
-### Testing Strategy
-**Restructure tests for PyPI packaging and comprehensive coverage**
+### Game Class Refactor
+**Encapsulate all game state in a single Game object**
 
-Current state: Single `tests.py` with integration tests
+This is the keystone refactor. It enables GUI, Rich Bot, save/load, and clean testing.
 
-Target structure (PyPI-ready):
-- `tests/test_cards.py` - Card class logic, trigger mechanics, Shopping Mall modifiers
-- `tests/test_players.py` - Player bank operations, dice rolling, landmark tracking
-- `tests/test_bots.py` - Bot decision-making, strategy logic, chooseCard/chooseDice
-- `tests/test_user_interactions.py` - Human player input handling (mocked)
-- `tests/test_game_flow.py` - Full game integration tests (turn mechanics, win conditions)
-- `tests/test_decks.py` - Store, PlayerDeck, TableDeck, UniqueDeck operations
+#### Design Principles
+- Game logic produces **events**, not print output
+- Game state lives in **one place**, not scattered across function parameters
+- Display is a **consumer** of game state, not embedded in it
+- Bots read game state through the **same interface** as a GUI would
 
-Testing improvements:
-- **Mock random events**: Use `unittest.mock.patch('random.randint')` for deterministic dice rolls
-- **Mock user inputs**: Mock `input()` calls to test Human player interactions automatically
-- **Focused unit tests**: Minimal setup, test one thing per test
-- **Keep integration tests**: Verify full game flow in `test_game_flow.py`
-- **Coverage target**: ~100% using `coverage.py` or `pytest-cov`
+#### Game Class - Core State
+```
+Game
+  .players: list[Player]         # All players in turn order
+  .market: TableDeck             # Cards available for purchase
+  .reserve: UniqueDeck           # Purple/orange card reserve pool
+  .current_player_index: int     # Whose turn it is
+  .turn_number: int              # For phase detection (early/mid/late game)
+  .last_roll: int                # Most recent die result
+  .winner: Player | None         # Set when someone wins
+```
 
-CircleCI updates:
-- Update `.circleci/config.yml` test command to run all tests: `python -m pytest tests/` or `python -m unittest discover tests/`
-- Ensure CI runs successfully with new test structure
-- Add coverage reporting to CI pipeline
+#### Game Class - Core Methods
+```
+Game.__init__(bots, humans)      # Set up players, decks, deal starting cards
+Game.next_turn() -> list[Event]  # Execute one full turn, return what happened
+Game.roll_dice() -> list[Event]  # Roll phase (includes Radio Tower re-roll)
+Game.resolve_cards() -> list[Event]  # Trigger cards in correct color order (Red → Blue → Green → Purple)
+Game.buy_phase() -> list[Event]  # Player chooses to buy or pass
+Game.refresh_market()            # Sync unique cards with current player's holdings
+Game.check_winner() -> bool      # Check if current player has all landmarks
+```
 
-### Code Quality - High Priority (Blocks GUI/Rich Bot Features)
+#### Game Class - Query Methods (for GUI and Bots)
+```
+Game.get_current_player() -> Player
+Game.get_purchase_options() -> list[str]    # Cards affordable by current player
+Game.get_player_state(player) -> dict       # Bank, deck, landmarks for display
+Game.get_market_state() -> dict             # Available cards with quantities
+Game.get_die_roller() -> Player             # Helper: who rolled this turn
+```
 
-**1. Create GameState class to encapsulate game data**
-- Current: Game state scattered across function parameters (playerlist, availableCards, specialCards, etc.)
-- Target: Single GameState object containing players, decks, turn number, current player
-- Benefits: Easier to serialize for save/load, cleaner API for GUI queries, simpler bot evaluation
+#### Event System
+Game methods return Event objects instead of printing. Each event describes
+what happened; the display layer decides how to show it.
 
-**2. Decouple output from game logic (event system)**
-- Current: Print statements embedded in trigger() methods and game flow
-- Target: Game logic returns events/actions, display layer renders them
-- Benefits: Essential for GUI (can't animate "card triggered" if it just prints), easier to test, supports different UIs
+```
+Event(type="roll", player="Jurph", value=7)
+Event(type="trigger", card="Cafe", owner="Bot1", target="Jurph", amount=2)
+Event(type="buy", player="Jurph", card="Forest", cost=3)
+Event(type="pass", player="Bot1")
+Event(type="win", player="Jurph")
+```
 
-**3. Extract Shopping Mall logic to payout modifier system**
-- Current: hasShoppingMall checks hardcoded in Green and Red card classes
-- Target: Flexible modifier system that player/card classes can query
-- Benefits: Expansions will add more landmark modifiers; avoid editing card classes repeatedly
+#### Display Protocol
+Any display (terminal, GUI, test harness) implements the same interface:
 
-### Code Quality - Medium Priority (Helps Rich Bot, Expansions)
+```
+Display.show_events(events: list[Event])    # Render a batch of events
+Display.show_state(game: Game)              # Render current game state
+Display.get_player_choice(options) -> str   # Prompt for input (buy/pass/target)
+```
 
-**4. Add Category enum/constants**
-- Current: Magic numbers (1=wheat, 2=ranch, etc.) scattered in code
-- Target: `class Category(IntEnum): WHEAT=1, RANCH=2, SHOP=3, ...`
-- Benefits: Bot evaluation code is clearer (`Category.RANCH` vs `2`), easier to extend
+Concrete implementations:
+- `TerminalDisplay` — prints to stdout (current behavior, preserved)
+- `GuiDisplay` — renders to Pygame window (future)
+- `NullDisplay` — swallows all output (for testing and bot simulations)
+- `LogDisplay` — writes to file (for statistics and replay)
 
-**5. Create helper function for finding die-roller**
+#### Migration Plan
+1. Create Game class with state only (no methods yet)
+2. Move `newGame()` logic into `Game.__init__()`
+3. Move `nextTurn()` logic into `Game.next_turn()`, keeping print statements temporarily
+4. Move `main()` game loop into `Game.run()`
+5. Update all tests to use `Game()` instead of `newGame()` tuple unpacking
+6. Verify all 66 tests still pass after each step
+7. **Then** introduce Event system and Display protocol (separate PR)
+8. **Then** replace print statements with events (separate PR)
+
+#### What Changes
+- `newGame()` → `Game.__init__()`
+- `nextTurn(playerlist, player, availableCards, specialCards)` → `Game.next_turn()`
+- `setPlayers()` → `Game._setup_players()`
+- `display()` → `TerminalDisplay.show_deck()`
+- `main()` game loop → `Game.run(display=TerminalDisplay())`
+- Card `.trigger()` methods receive `Game` instead of `players: list`
+
+#### What Stays the Same
+- Player class hierarchy (Player, Human, Bot, ThoughtfulBot)
+- Card class hierarchy (Card, Blue, Green, Red, Purple subtypes)
+- Store/Deck classes (Store, PlayerDeck, TableDeck, UniqueDeck)
+- All card trigger logic (just restructured to return events)
+
+#### Design-for-Test Requirements
+- `Game(bots=2)` must be sufficient to create a testable game (no interactive setup)
+- `NullDisplay` allows running full games silently in tests
+- Events are inspectable: test can assert "a Cafe triggered for 2 coins"
+- Game state is queryable: test can check `game.players[0].bank` at any point
+- Deterministic mode: mock `random.randint` once, control entire game
+- No `input()` calls in Game class — all player interaction goes through Display
+
+### Code Quality — Sequenced Around Game() Refactor
+
+#### Blockers (do these BEFORE Game() refactor)
+
+**get_die_roller() helper function**
 - Current: Repeated loop pattern in every Purple card trigger()
 - Target: `get_die_roller(players)` utility function
-- Benefits: DRY principle, single place to fix bugs, easier to test
+- Why first: Cleaning this up now means less mess to move into Game(). Also needed for the trigger-order bugfix.
 
-**6. Simplify market refresh logic in nextTurn()**
-- Current: Four-way truth table with nested conditionals (lines 756-768)
-- Target: Clearer two-branch logic (player owns it? remove from market : add to market)
-- Benefits: Easier to debug, more maintainable
+**Fix card trigger order (see Bugfix section)**
+- Why first: The Game.resolve_cards() method should be built correctly from day one. Fix the ordering logic in the current codebase, then migrate the corrected version into Game().
 
-### Code Quality - Low Priority (Code Cleanliness)
+#### Include in Game() Refactor (do these AS PART OF the refactor)
 
-**7. ✅ Apply @total_ordering decorator to Card class** - DONE
-- Added @functools.total_ordering decorator
-- Simplified from 6 methods to 2 (__eq__ and __lt__)
-- Added proper NotImplemented returns for type safety
+**Encapsulate game state in Game class**
+- Absorbs `newGame()`, `nextTurn()`, `setPlayers()`, `main()` game loop
+- See Game Class Refactor section above for full plan
 
-**8. ✅ Remove dead functionalTest() code** - DONE
-- Removed unused functionalTest() function
-- Cleaned up ~20 lines of dead code
+**Decouple output from game logic (Event system + Display protocol)**
+- Print statements become Events; Display layer renders them
+- TerminalDisplay preserves current behavior; NullDisplay enables silent testing
+- Migration plan steps 7-8 in Game Class Refactor section
 
-**9. ✅ Make string formatting consistent** - DONE
-- Converted all 32 .format() calls to f-strings
-- Codebase now uses consistent modern Python string formatting
+**Simplify market refresh logic**
+- Current: Four-way truth table with nested conditionals in nextTurn()
+- Becomes `Game.refresh_market()` — rewrite it cleanly as part of the move
 
-**10. Better use of dict() structures for card lookups**
-- Look for chances to use enumerate() instead of for loops (checked: current usage is appropriate)
-- Add remaining type hints where they improve clarity (not everywhere)
+**Extract Shopping Mall logic to payout modifier system**
+- Current: hasShoppingMall checks hardcoded in Green and Red card classes
+- Best time to fix: when card triggers are being restructured to return Events
 
-**11. Complete Display() class refactoring**
-- Formalize the display layer once event system is in place
+#### Future (easier AFTER Game() is done)
 
-**12. Performance benchmarks**
+**Complete Display class implementations**
+- TerminalDisplay ships with Game() refactor
+- GuiDisplay, LogDisplay built on top of the Display protocol afterward
+
+**Add remaining type hints**
+- Easier once the API surface is stable (Game, Event, Display interfaces)
+
+**Better use of dict() structures for card lookups**
+- Evaluate once card trigger logic is settled in its final home
+
+**Performance benchmarks**
 - Profile game loop, card triggers, bot decision-making
-- Establish baseline before GUI work
+- Establish baseline after Game() refactor stabilizes
+
+#### Testing Strategy — Status
+**✅ Test restructuring: DONE** (66 tests across 6 files, all passing)
+
+Remaining testing work:
+- Add `tests/test_game.py` for the new Game class (part of Game() refactor)
+- Add coverage reporting to CircleCI pipeline (Codecov integration in progress)
+- Coverage target: ~100% using `coverage.py`
