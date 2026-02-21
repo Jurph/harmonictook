@@ -282,6 +282,14 @@ class ThoughtfulBot(Bot):
             return random.choice([1,2,2,2,2])
 
 
+def get_die_roller(players: list) -> Player:
+    """Return the player whose isrollingdice flag is True, or raise ValueError if none."""
+    for person in players:
+        if person.isrollingdice:
+            return person
+    raise ValueError("No player is currently rolling the dice")
+
+
 # === Define Class Card() === #
 # Cards must have a name, cost, a payer, a payout amount, and one or more die rolls on which they "hit"
 @total_ordering
@@ -383,11 +391,7 @@ class Red(Card):
 
     def trigger(self, players: list) -> None:
         """Deduct payout coins from the die-roller and deposit them with the card owner."""
-        for person in players:
-            if person.isrollingdice:
-                dieroller = person
-            else:
-                pass
+        dieroller = get_die_roller(players)
         payout_amount = self.payout
         # Shopping Mall adds +1 to cafe and convenience store payouts
         if self.owner.hasShoppingMall and self.name in ["Cafe", "Family Restaurant", "Convenience Store"]:
@@ -426,11 +430,7 @@ class Stadium(Card):
 
     def trigger(self, players: list) -> None:
         """Collect 2 coins from each player and deposit them with the die-roller."""
-        for person in players:
-            if person.isrollingdice:
-                dieroller = person
-            else:
-                pass
+        dieroller = get_die_roller(players)
         for person in players:
             payment = person.deduct(self.payout)
             dieroller.deposit(payment)
@@ -449,11 +449,7 @@ class TVStation(Card):
 
     def trigger(self, players: list) -> None:
         """If the owner is the die-roller, steal up to 5 coins from a chosen target."""
-        for person in players:
-            if person.isrollingdice:
-                dieroller = person
-            else:
-                pass
+        dieroller = get_die_roller(players)
         if dieroller == self.owner:
             print(f"{self.owner.name} activates TV Station!")
             target = dieroller.chooseTarget(players)
@@ -481,9 +477,7 @@ class BusinessCenter(Card):
 
     def trigger(self, players: list) -> None:
         """If the owner is the die-roller, swap a card with a target (or give the bot 5 coins)."""
-        for person in players:
-            if person.isrollingdice:
-                dieroller = person
+        dieroller = get_die_roller(players)
         if self.owner == dieroller:
             print(f"{self.owner.name} activates Business Center!")
             # For bots, just give them coins since card swapping is complex
@@ -754,11 +748,12 @@ def nextTurn(playerlist: list, player: Player, availableCards: Store, specialCar
         print(f"{player.name} uses the Radio Tower to re-roll!")
         dieroll, isDoubles = player.dieroll()
         print(f"{player.name} rolled a {dieroll}.")
-    for person in playerlist:
-        for card in person.deck.deck:
-            if dieroll in card.hitsOn:
-                print(f"{person.name}'s {card.name} activates on a {dieroll}...")
-                card.trigger(playerlist)
+    for card_color in [Red, Blue, Green, Stadium, TVStation, BusinessCenter]:
+        for person in playerlist:
+            for card in person.deck.deck:
+                if dieroll in card.hitsOn and isinstance(card, card_color):
+                    print(f"{person.name}'s {card.name} activates on a {dieroll}...")
+                    card.trigger(playerlist)
 
     # Buy Phase
     for person in playerlist:
