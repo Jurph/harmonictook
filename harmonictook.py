@@ -153,14 +153,15 @@ class Human(Player):
             else:
                 print("Please enter B, P, or S.")
 
-    def chooseCard(self, options: list) -> str | None:
-        """Prompt the human to pick a card name from options; returns the name or None if list is empty."""
+    def chooseCard(self, options: list, market=None) -> str | None:
+        """Prompt the human to pick a card; shows a rich table when market is supplied."""
         if len(options) == 0:
             print("Oh no - no valid purchase options this turn.")
             return None
-        else:
-            cardname = utility.userChoice(options)
-            return cardname
+        if market is not None:
+            cards = [next(c for c in market.deck if c.name == name) for name in options]
+            return utility.card_menu(cards)
+        return utility.userChoice(options)
 
     def chooseDice(self) -> int:
         """Prompt the human (if they own Train Station) to choose 1 or 2 dice; default is 1."""
@@ -214,14 +215,12 @@ class Bot(Player):
             return 'buy'
         return 'pass'
 
-    def chooseCard(self, options: list) -> str | None:
+    def chooseCard(self, options: list, market=None) -> str | None:
         """Return a randomly selected card name from options, or None if the list is empty."""
         if len(options) == 0:
             print("Oh no - no valid purchase options this turn.")
             return None
-        else:
-            cardname = random.choice(options)
-            return cardname
+        return random.choice(options)
 
     def chooseDice(self) -> int:
         """Return 2 if the bot owns Train Station, otherwise 1."""
@@ -240,7 +239,7 @@ class Bot(Player):
 class ThoughtfulBot(Bot):
     """Priority-driven bot that follows a fixed card-preference ordering."""
 
-    def chooseCard(self, options: list) -> str | None:
+    def chooseCard(self, options: list, market=None) -> str | None:
         """Return the highest-priority card name available in options per the bot's preference list."""
         if len(options) == 0:
             print("Can't buy anything.")
@@ -307,6 +306,10 @@ class Card(object):
         self.category = None    # Categories from the list below
         self.multiplies = None  # Also categories
 
+    def describe(self) -> str:
+        """Return a plain-English description of this card's effect for display in purchase menus."""
+        return ""
+
     def sortvalue(self) -> float:
         """Return a float used for stable deck ordering: mean hitsOn, then cost, then name."""
         from statistics import mean
@@ -353,6 +356,17 @@ class Green(Card):
         self.payer = 0         # Green cards always pay out from the bank (0)
         self.recipient = 1     # Green cards always pay to the die roller (1)
 
+    _category_names = {1: "Grain", 2: "Ranch", 3: "Bakery", 4: "Café",
+                       5: "Gear", 6: "Factory", 7: "Major", 8: "Fruit"}
+
+    def describe(self) -> str:
+        """Describe this Green card's effect; factory cards name the category they multiply."""
+        if self.multiplies:
+            cat = self._category_names.get(self.multiplies, f"cat-{self.multiplies}")
+            return f"Pays {self.payout} coin(s) per {cat} card you own, on your roll"
+        suffix = " (+1 with Shopping Mall)" if self.name == "Convenience Store" else ""
+        return f"Pays {self.payout} coin(s) from bank when you roll{suffix}"
+
     def trigger(self, players: list) -> None:
         """Pay the die-roller from the bank if it is their turn; factory cards multiply by matching category count."""
         subtotal = 0
@@ -389,6 +403,11 @@ class Red(Card):
         self.payer = 1          # Red cards pay out from the die-roller (1)
         self.recipient = 3      # Red cards pay to the card owner (3)
 
+    def describe(self) -> str:
+        """Describe this Red card's steal effect; notes Shopping Mall bonus where applicable."""
+        suffix = " (+1 with Shopping Mall)" if self.name in ("Cafe", "Family Restaurant") else ""
+        return f"Steals {self.payout} coin(s) from the roller on their turn{suffix}"
+
     def trigger(self, players: list) -> None:
         """Deduct payout coins from the die-roller and deposit them with the card owner."""
         dieroller = get_die_roller(players)
@@ -411,6 +430,10 @@ class Blue(Card):
         self.payer = 0          # Blue cards pay out fromm the bank (0)
         self.recipient = 3      # Blue cards pay out to the card owner (3)
 
+    def describe(self) -> str:
+        """Describe this Blue card's passive income effect."""
+        return f"Pays {self.payout} coin(s) to owner on any player's roll"
+
     def trigger(self, players: list) -> None:
         """Deposit payout coins from the bank into the card owner's account."""
         print(f"{self.name} pays out {self.payout} to {self.owner.name}.")
@@ -427,6 +450,9 @@ class Stadium(Card):
         self.hitsOn = [6]       # Purple cards all hit on [6]
         self.payer = 2          # Stadium collects from all players
         self.payout = 2
+
+    def describe(self) -> str:
+        return f"Collect {self.payout} coins from EACH player when you roll 6"
 
     def trigger(self, players: list) -> None:
         """Collect 2 coins from each player and deposit them with the die-roller."""
@@ -446,6 +472,9 @@ class TVStation(Card):
         self.hitsOn = [6]       # Purple cards all hit on [6]
         self.payer = 4          # TV Station collects from one player
         self.payout = 5
+
+    def describe(self) -> str:
+        return f"Steal {self.payout} coins from a chosen player when you roll 6"
 
     def trigger(self, players: list) -> None:
         """If the owner is the die-roller, steal up to 5 coins from a chosen target."""
@@ -474,6 +503,9 @@ class BusinessCenter(Card):
         self.hitsOn = [6]       # Purple cards all hit on [6]
         self.payer = 4          # Business Center collects from one targeted player (4)
         self.payout = 0         # Payout is the ability to swap cards (!)
+
+    def describe(self) -> str:
+        return "Swap one of your cards with any player's card when you roll 6"
 
     def trigger(self, players: list) -> None:
         """If the owner is the die-roller, swap a card with a target (or give the bot 5 coins)."""
@@ -523,6 +555,16 @@ class UpgradeCard(Card):
         self.category = self.orangeCards[name][1]
         self.owner = None
         self.hitsOn = [99]  # For sorting purposes these cards should be listed last among a player's assets, with a number that can never be rolled
+
+    _descriptions = {
+        "Train Station":  "Roll 1 or 2 dice on your turn",
+        "Shopping Mall":  "+1 coin from Cafés, Restaurants, and Convenience Stores",
+        "Amusement Park": "Roll doubles → take an extra turn",
+        "Radio Tower":    "Once per turn, reroll your dice",
+    }
+
+    def describe(self) -> str:
+        return self._descriptions.get(self.name, "")
 
     def bestowPower(self) -> None:
         """Set the corresponding boolean flag on the owner to activate this upgrade's ability."""
@@ -787,7 +829,7 @@ class Game:
         action = player.chooseAction(self.market)
         if action == 'buy':
             options = self.market.names(maxcost=player.bank)
-            cardname = player.chooseCard(options)
+            cardname = player.chooseCard(options, self.market)
             if cardname is not None:
                 player.buy(cardname, self.market)
         elif action == 'pass':

@@ -77,6 +77,18 @@ class TestUserInteractions(unittest.TestCase):
             result = human.chooseCard(['Ranch', 'Wheat Field'])
         self.assertEqual(result, 'Ranch')
 
+    @patch('builtins.print')
+    def testHumanChooseCardWithMarket(self, mock_print):
+        """Verify Human.chooseCard() uses card_menu (rich table) when a market is supplied."""
+        from harmonictook import Game
+        game = Game(players=2)
+        human = Human(name="TestHuman")
+        options = ['Wheat Field', 'Ranch']
+        with patch('harmonictook.utility.card_menu', return_value='Ranch') as mock_menu:
+            result = human.chooseCard(options, game.market)
+        mock_menu.assert_called_once()
+        self.assertEqual(result, 'Ranch')
+
     def testHumanChooseDiceOutOfRange(self):
         """Verify chooseDice() rejects values outside 1–2 and retries until a valid input is given."""
         human = Human(name="TestHuman")
