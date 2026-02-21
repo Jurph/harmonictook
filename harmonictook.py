@@ -706,98 +706,126 @@ def display(deckObject: Store) -> None:
         rowstring += f"{quantity}\n"
     print(rowstring)
 
-def newGame(players=None, bots: int = 0, humans: int = 0) -> tuple:
-    """Initialize and return (availableCards, specialCards, playerlist) for a new game."""
-    availableCards = TableDeck()
-    playerlist = setPlayers(players, bots=bots, humans=humans)
-    specialCards = UniqueDeck(playerlist)
-    return availableCards, specialCards, playerlist
+class Game:
+    """Encapsulates all state and logic for a single Machi Koro game."""
 
-def nextTurn(playerlist: list, player: Player, availableCards: Store, specialCards: Store) -> bool:
-    """Execute one full turn for player: refresh market, roll dice, trigger cards, buy; return isDoubles."""
-    # Reset the turn counter; start a new turn
-    for person in playerlist:
-        person.isrollingdice = False
-    player.isrollingdice = True
-    isDoubles = False
+    def __init__(self, players=None, bots: int = 0, humans: int = 0):
+        """Set up players, market, and reserve for a new game."""
+        self.players: list = setPlayers(players, bots=bots, humans=humans)
+        self.market: TableDeck = TableDeck()
+        self.reserve: UniqueDeck = UniqueDeck(self.players)
+        self.current_player_index: int = 0
+        self.turn_number: int = 0
+        self.last_roll: int | None = None
+        self.winner: Player | None = None
 
-    # Refresh purchase options
-    # If the player has a copy of the unique cards, don't present them as options
-    for card in specialCards.deck:
-        if (card.name not in player.deck.names()) and (card.name in availableCards.names()):
-            pass
-        elif (card.name not in player.deck.names()) and (card.name not in availableCards.names()):
-            availableCards.append(card)
-            specialCards.remove(card)
-        elif (card.name in player.deck.names()) and (card.name in availableCards.names()):
-            availableCards.remove(card)
-            specialCards.append(card)
-        elif (card.name in player.deck.names()) and (card.name not in availableCards.names()):
-            pass
-        else:
-            print("WARN: Somehow left the truth table")
+    def get_current_player(self) -> Player:
+        """Return the player whose turn it currently is."""
+        return self.players[self.current_player_index]
 
-    # Die Rolling Phase
-    print(f"-=-=-= It's {player.name}'s turn =-=-=-")
-    dieroll, isDoubles = player.dieroll()
-    print(f"{player.name} rolled a {dieroll}.")
+    def get_purchase_options(self) -> list:
+        """Return card names in the market affordable by the current player."""
+        return self.market.names(maxcost=self.get_current_player().bank)
 
-    # Radio Tower re-roll option
-    player._last_roll = dieroll  # Store for bot decision-making
-    if player.chooseReroll():
-        print(f"{player.name} uses the Radio Tower to re-roll!")
+    def refresh_market(self) -> None:
+        """Sync unique cards between reserve and market based on the current player's holdings."""
+        player = self.get_current_player()
+        for card in self.reserve.deck:
+            if (card.name not in player.deck.names()) and (card.name in self.market.names()):
+                pass
+            elif (card.name not in player.deck.names()) and (card.name not in self.market.names()):
+                self.market.append(card)
+                self.reserve.remove(card)
+            elif (card.name in player.deck.names()) and (card.name in self.market.names()):
+                self.market.remove(card)
+                self.reserve.append(card)
+            elif (card.name in player.deck.names()) and (card.name not in self.market.names()):
+                pass
+            else:
+                print("WARN: Somehow left the truth table")
+
+    def next_turn(self) -> bool:
+        """Execute one full turn for the current player; return isDoubles."""
+        player = self.get_current_player()
+
+        # Reset isrollingdice flags; mark the active player
+        for person in self.players:
+            person.isrollingdice = False
+        player.isrollingdice = True
+        isDoubles = False
+
+        self.refresh_market()
+
+        # Die Rolling Phase
+        print(f"-=-=-= It's {player.name}'s turn =-=-=-")
         dieroll, isDoubles = player.dieroll()
+        self.last_roll = dieroll
         print(f"{player.name} rolled a {dieroll}.")
-    for card_color in [Red, Blue, Green, Stadium, TVStation, BusinessCenter]:
-        for person in playerlist:
-            for card in person.deck.deck:
-                if dieroll in card.hitsOn and isinstance(card, card_color):
-                    print(f"{person.name}'s {card.name} activates on a {dieroll}...")
-                    card.trigger(playerlist)
 
-    # Buy Phase
-    for person in playerlist:
-        print(f"{person.name} now has {person.bank} coins.")
-    print(f"-=-=-={player.name}'s Deck=-=-=-")
-    display(player.deck)
+        # Radio Tower re-roll option
+        player._last_roll = dieroll
+        if player.chooseReroll():
+            print(f"{player.name} uses the Radio Tower to re-roll!")
+            dieroll, isDoubles = player.dieroll()
+            self.last_roll = dieroll
+            print(f"{player.name} rolled a {dieroll}.")
 
-    action = player.chooseAction(availableCards)
-    if action == 'buy':
-        options = availableCards.names(maxcost=player.bank)
-        cardname = player.chooseCard(options)
-        if cardname is not None:
-            player.buy(cardname, availableCards)
-    elif action == 'pass':
-        print(f"{player.name} passes this turn.")
+        # Card triggers in correct color order: Red → Blue → Green → Purple
+        for card_color in [Red, Blue, Green, Stadium, TVStation, BusinessCenter]:
+            for person in self.players:
+                for card in person.deck.deck:
+                    if dieroll in card.hitsOn and isinstance(card, card_color):
+                        print(f"{person.name}'s {card.name} activates on a {dieroll}...")
+                        card.trigger(self.players)
 
-    return isDoubles
+        # Buy Phase
+        for person in self.players:
+            print(f"{person.name} now has {person.bank} coins.")
+        print(f"-=-=-={player.name}'s Deck=-=-=-")
+        display(player.deck)
+
+        action = player.chooseAction(self.market)
+        if action == 'buy':
+            options = self.market.names(maxcost=player.bank)
+            cardname = player.chooseCard(options)
+            if cardname is not None:
+                player.buy(cardname, self.market)
+        elif action == 'pass':
+            print(f"{player.name} passes this turn.")
+
+        self.turn_number += 1
+        return isDoubles
+
+    def run(self) -> None:
+        """Run the game loop until a player wins."""
+        no_winner_yet = True
+        while no_winner_yet:
+            for i, turntaker in enumerate(self.players):
+                self.current_player_index = i
+                is_doubles = self.next_turn()
+                if turntaker.isWinner():
+                    no_winner_yet = False
+                    self.winner = turntaker
+                    print(f"{turntaker.name} wins!")
+                    return
+                while is_doubles and turntaker.hasAmusementPark:
+                    print(f"{turntaker.name} rolled doubles and gets to go again!")
+                    is_doubles = self.next_turn()
+                    if turntaker.isWinner():
+                        no_winner_yet = False
+                        self.winner = turntaker
+                        print(f"{turntaker.name} wins!")
+                        return
+
 
 def main():
-    # Pull in command-line input
     parser = argparse.ArgumentParser(description='The card game Machi Koro')
     parser.add_argument('-t', '--test', dest='unittests', action='store_true', required=False, help='run unit tests instead of executing the game code')
     parser.add_argument('--bots', type=int, default=0, metavar='N', help='number of bot players (skips interactive setup)')
     parser.add_argument('--humans', type=int, default=0, metavar='N', help='number of human players (skips interactive setup)')
     args = parser.parse_args()
-    availableCards, specialCards, playerlist = newGame(bots=args.bots, humans=args.humans)
-    noWinnerYet = True
-    while noWinnerYet:
-        for turntaker in playerlist:
-            isDoubles = nextTurn(playerlist, turntaker, availableCards, specialCards)
-            if turntaker.isWinner():
-                noWinnerYet = False
-                print(f"{turntaker.name} wins!")
-                exit()
-            else:
-                pass
-            # Amusement Park: extra turn on doubles
-            while isDoubles and turntaker.hasAmusementPark:
-                print(f"{turntaker.name} rolled doubles and gets to go again!")
-                isDoubles = nextTurn(playerlist, turntaker, availableCards, specialCards)
-                if turntaker.isWinner():
-                    noWinnerYet = False
-                    print(f"{turntaker.name} wins!")
-                    exit()
+    game = Game(bots=args.bots, humans=args.humans)
+    game.run()
 
 
 if __name__ == "__main__":
