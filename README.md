@@ -2,10 +2,15 @@
 
 # What?
 `h a r m o n i c t o o k`   
+`r o m a n t i c h o o k`   
+`m o c h a r o o k t i n`   
+`t o m o c k a r h i n o`   
 `t h m o r o n i c o a k`   
 `m o o n c r o a k i t h`   
-`t h i n k o r a c o o n`   
-`n o t m a c h i k o r o`   
+`t h i n k o r a c o o n`    
+`m o c h a i n k r o o t`   
+`t i c k m o o n h o r a`   
+`n o t m a c h i k o r o`  
 
 # Does it work? 
 [![CircleCI Badge](https://circleci.com/gh/Jurph/harmonictook.svg?style=shield&circletoken=865dd863ff6582b56c01424e84fdeedfbc0e0d8e)](https://app.circleci.com/pipelines/github/Jurph/harmonictook)
