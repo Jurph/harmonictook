@@ -155,5 +155,98 @@ class TestWinCondition(unittest.TestCase):
         self.assertTrue(self.bot.isWinner())
 
 
+class TestSetPlayers(unittest.TestCase):
+    """Tests for setPlayers() covering all three dispatch branches."""
+
+    def testSetPlayersBotArgs(self):
+        """Verify setPlayers(bots=2) returns 2 ThoughtfulBots."""
+        result = setPlayers(bots=2)
+        self.assertEqual(len(result), 2)
+        self.assertIsInstance(result[0], ThoughtfulBot)
+        self.assertIsInstance(result[1], ThoughtfulBot)
+
+    def testSetPlayersHumanBotArgs(self):
+        """Verify setPlayers(humans=1, bots=1) returns Human followed by ThoughtfulBot."""
+        result = setPlayers(humans=1, bots=1)
+        self.assertEqual(len(result), 2)
+        self.assertIsInstance(result[0], Human)
+        self.assertIsInstance(result[1], ThoughtfulBot)
+
+    @patch('builtins.print')
+    def testSetPlayersTooFew(self, mock_print):
+        """Verify setPlayers(bots=1) pads to 2 and prints a warning."""
+        result = setPlayers(bots=1)
+        self.assertEqual(len(result), 2)
+        self.assertTrue(any('at least 2' in str(c) for c in mock_print.call_args_list))
+
+    @patch('builtins.print')
+    def testSetPlayersTooMany(self, mock_print):
+        """Verify setPlayers(humans=3, bots=2) trims to 4 and prints a warning."""
+        result = setPlayers(humans=3, bots=2)
+        self.assertEqual(len(result), 4)
+        self.assertTrue(any('Maximum 4' in str(c) for c in mock_print.call_args_list))
+
+    def testSetPlayersIntClampLow(self):
+        """Verify setPlayers(1) clamps up to 2 and returns 2 Bots."""
+        result = setPlayers(1)
+        self.assertEqual(len(result), 2)
+        self.assertIsInstance(result[0], Bot)
+
+    def testSetPlayersIntClampHigh(self):
+        """Verify setPlayers(5) clamps down to 4 and returns 4 Bots."""
+        result = setPlayers(5)
+        self.assertEqual(len(result), 4)
+
+    @patch('builtins.print')
+    def testSetPlayersUnexpectedType(self, mock_print):
+        """Verify setPlayers(3.14) prints a warning and returns None."""
+        result = setPlayers(3.14)
+        self.assertIsNone(result)
+        self.assertTrue(any('Unexpected' in str(c) for c in mock_print.call_args_list))
+
+    @patch('builtins.print')
+    @patch('builtins.input', side_effect=['b', 'Robo', 'b', 'Thinker', 'n'])
+    def testSetPlayersInteractiveTwoBots(self, mock_input, mock_print):
+        """Verify interactive: 'Robo' (no T) → Bot, 'Thinker' (T-name) → ThoughtfulBot, 'n' → done."""
+        result = setPlayers()
+        self.assertEqual(len(result), 2)
+        self.assertIsInstance(result[0], Bot)
+        self.assertIsInstance(result[1], ThoughtfulBot)
+        self.assertEqual(result[1].name, 'Thinker')
+
+    @patch('builtins.print')
+    @patch('builtins.input', side_effect=['h', 'Alice', 'b', 'Bob', 'n'])
+    def testSetPlayersInteractiveHuman(self, mock_input, mock_print):
+        """Verify interactive: 'h'+'Alice' → Human, 'b'+'Bob' → Bot, 'n' → done."""
+        result = setPlayers()
+        self.assertEqual(len(result), 2)
+        self.assertIsInstance(result[0], Human)
+        self.assertEqual(result[0].name, 'Alice')
+        self.assertIsInstance(result[1], Bot)
+
+    @patch('builtins.print')
+    @patch('builtins.input', side_effect=['xyz', 'b', 'Robo', 'b', 'Thinker', 'n'])
+    def testSetPlayersInteractiveUnknownInput(self, mock_input, mock_print):
+        """Verify interactive: unrecognised H/B input prints an error and loops."""
+        result = setPlayers()
+        self.assertEqual(len(result), 2)
+        self.assertTrue(any('H or B' in str(c) for c in mock_print.call_args_list))
+
+    @patch('builtins.print')
+    @patch('builtins.input', side_effect=['b', 'R1', 'b', 'R2', 'y', 'b', 'R3', 'y', 'b', 'R4'])
+    def testSetPlayersInteractiveFourPlayers(self, mock_input, mock_print):
+        """Verify interactive: loop auto-breaks at 4 players without asking for more."""
+        result = setPlayers()
+        self.assertEqual(len(result), 4)
+
+    @patch('builtins.print')
+    @patch('builtins.input', side_effect=['b', 'R1', 'b', 'R2', 'sure', 'b', 'R3', 'n'])
+    def testSetPlayersInteractiveBadYesNo(self, mock_input, mock_print):
+        """Verify interactive: unrecognised Y/N answer (no 'y' or 'n') prints an error and loops."""
+        result = setPlayers()
+        self.assertEqual(len(result), 3)
+        self.assertTrue(any('Y or N' in str(c) for c in mock_print.call_args_list))
+
+
 if __name__ == "__main__":
     unittest.main(buffer=True)

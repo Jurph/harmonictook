@@ -67,6 +67,12 @@ Architecture:
 
 ## Bugfix
 
+- **CRITICAL: Card trigger order violates Machi Koro rules**
+  - Current: Cards trigger in player order (die-roller's cards first, then others)
+  - Correct: Must trigger by color: Red (steal first) → Blue (pay all) → Green (pay die-roller) → Purple (die-roller only)
+  - Impact: Red cards (cafes/restaurants) are significantly weaker than intended because die-roller gets paid before being stolen from
+  - Fix requires: Sorting cards by color/payer before triggering, plus get_die_roller() helper function
+
 - Emoji don't correctly display in Windows terminals
 
 ## Tech Debt / Quality

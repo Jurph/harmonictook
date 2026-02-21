@@ -12,8 +12,11 @@ jobs:
       - python/install-deps
       - python/save-cache
       - run:
-          command: python -m unittest discover -v tests/
-          name: Test
+          command: |
+            coverage run -m unittest discover tests/
+            coverage report
+            codecov
+          name: Test with Coverage
 
 workflows:
   main:

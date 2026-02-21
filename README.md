@@ -9,6 +9,7 @@
 
 # Does it work? 
 [![CircleCI Badge](https://circleci.com/gh/Jurph/harmonictook.svg?style=shield&circletoken=865dd863ff6582b56c01424e84fdeedfbc0e0d8e)](https://app.circleci.com/pipelines/github/Jurph/harmonictook)
+[![codecov](https://codecov.io/gh/Jurph/harmonictook/branch/main/graph/badge.svg)](https://codecov.io/gh/Jurph/harmonictook)
 
 # STATUS: v0.9 Released 
 
