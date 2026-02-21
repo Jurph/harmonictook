@@ -74,7 +74,7 @@ class TestCardDescriptions(unittest.TestCase):
         self.assertIn("Ranch", cheese.describe())
         furniture = Green("Furniture Factory", 6, 3, 3, [8], multiplies=5)
         self.assertIn("Gear", furniture.describe())
-        fvm = Green("Fruit and Vegetable Market", 8, 2, 2, [11, 12], multiplies=1)
+        fvm = Green("Fruit & Vegetable Market", 8, 2, 2, [11, 12], multiplies=1)
         self.assertIn("Grain", fvm.describe())
 
     def testRedDescribe(self):

@@ -24,11 +24,11 @@ def userChoice(options: list) -> str:
 def card_menu(cards: list) -> str:
     """Display a formatted purchase table (index, name, cost, rolls, description) and return the chosen card's name."""
     print(" -=-= Buy a Card =-=- ")
-    print(f"  {'#':>2}  {'Name':<24} {'Cost':>4}   {'Rolls':<10}  Description")
-    print(f"  {'':->2}  {'':->24} {'':->4}   {'':->10}  {'':->44}")
+    print(f"  {'#':>2}  {'Name':<25} {'Cost':>4}   {'Rolls':<10}  Description")
+    print(f"  {'':->2}  {'':->25} {'':->4}   {'':->10}  {'':->44}")
     for i, card in enumerate(cards, 1):
         rolls = "—" if card.hitsOn == [99] else ", ".join(str(r) for r in card.hitsOn)
-        print(f"  [{i:>2}]  {card.name:<24} {card.cost:>4}   {rolls:<10}  {card.describe()}")
+        print(f"  [{i:>2}]  {card.name:<25} {card.cost:>4}   {rolls:<10}  {card.describe()}")
     while True:
         try:
             j = int(input("Your selection: "))

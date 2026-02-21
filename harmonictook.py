@@ -263,7 +263,7 @@ class ThoughtfulBot(Bot):
             "Cheese Factory",
             "Family Restaurant",
             "Apple Orchard",
-            "Fruit and Vegetable Market"]
+            "Fruit & Vegetable Market"]
             if self.hasTrainStation:
                 preferences = upgrades + latecards + earlycards
             else:
@@ -558,8 +558,8 @@ class UpgradeCard(Card):
 
     _descriptions = {
         "Train Station":  "Roll 1 or 2 dice on your turn",
-        "Shopping Mall":  "+1 coin from Cafés, Restaurants, and Convenience Stores",
-        "Amusement Park": "Roll doubles → take an extra turn",
+        "Shopping Mall":  "+1 coin from Cafes, Restaurants, and Convenience Stores",
+        "Amusement Park": "Roll doubles -> take an extra turn",
         "Radio Tower":    "Once per turn, reroll your dice",
     }
 
@@ -655,7 +655,7 @@ class TableDeck(Store):
             self.append(Blue("Mine",5,6,5,[9]))
             self.append(Red("Family Restaurant",4,3,2,[9,10]))
             self.append(Blue("Apple Orchard",1,3,3,[10]))
-            self.append(Green("Fruit and Vegetable Market",8,2,2,[11,12],1))
+            self.append(Green("Fruit & Vegetable Market",8,2,2,[11,12],1))
         self.append(TVStation())
         self.append(BusinessCenter())
         self.append(Stadium())
