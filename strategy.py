@@ -290,10 +290,15 @@ def score_purchase_options(player: Player, game: Game, N: int = 1) -> dict[Card,
 class EVBot(Bot):
     """Bot that ranks purchase options by delta_ev and buys the highest-scoring card.
 
+    n_horizon controls the N-round planning horizon passed to score_purchase_options.
     Inherits Bot.chooseAction (buy if affordable) and Bot.chooseDice/chooseReroll.
     chooseCard uses score_purchase_options; falls back to random.choice if game is
     unavailable or no scored card appears in options.
     """
+
+    def __init__(self, name: str = "EVBot", n_horizon: int = 1) -> None:
+        super().__init__(name=name)
+        self.n_horizon = n_horizon
 
     def chooseCard(self, options: list, game: Game | None = None) -> str | None:
         """Return the name of the highest delta_ev card available in options."""
@@ -301,7 +306,7 @@ class EVBot(Bot):
             return None
         if game is None:
             raise ValueError("EVBot.chooseCard requires a Game instance")
-        scored = score_purchase_options(self, game, N=1)
+        scored = score_purchase_options(self, game, N=self.n_horizon)
         for card in scored:
             if card.name in options:
                 return card.name

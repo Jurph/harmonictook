@@ -6,7 +6,11 @@ import unittest
 from unittest.mock import patch
 
 from harmonictook import Bot, Game, ThoughtfulBot
-from tournament import run_match, run_bracket, run_tournament, print_report
+from strategy import EVBot
+from tournament import (
+    make_evbot, print_report, print_round_robin_report,
+    run_bracket, run_match, run_round_robin, run_tournament,
+)
 
 
 def _always_wins(self_game: Game, display=None) -> None:
@@ -130,6 +134,58 @@ class TestPrintReport(unittest.TestCase):
             print_report("TestBot", {})
         except Exception as e:
             self.fail(f"print_report raised {e}")
+
+
+class TestRunRoundRobin(unittest.TestCase):
+    """run_round_robin: multi-bot simultaneous-table format."""
+
+    def test_result_keys_match_labels(self):
+        """Result dict contains exactly the supplied factory labels."""
+        factories = [("A", Bot), ("B", Bot)]
+        with patch.object(Game, 'run', _always_wins):
+            results = run_round_robin(factories, n_games=3)
+        self.assertEqual(set(results.keys()), {"A", "B"})
+
+    def test_total_wins_equals_n_games(self):
+        """Sum of all win counts equals n_games — no games are dropped."""
+        factories = [("A", Bot), ("B", Bot), ("C", Bot)]
+        with patch.object(Game, 'run', _always_wins):
+            results = run_round_robin(factories, n_games=7)
+        self.assertEqual(sum(results.values()), 7)
+
+    def test_first_seat_wins_all_when_rigged(self):
+        """With shuffle suppressed and seat-0 always winning, all wins go to the first factory."""
+        factories = [("Winner", Bot), ("Loser", Bot)]
+        with patch.object(Game, 'run', _always_wins):
+            with patch('tournament.random.shuffle'):
+                results = run_round_robin(factories, n_games=5)
+        self.assertEqual(results["Winner"], 5)
+        self.assertEqual(results["Loser"], 0)
+
+    def test_make_evbot_produces_evbot_with_correct_horizon(self):
+        """make_evbot(N) returns a factory whose instances have n_horizon == N."""
+        factory = make_evbot(7)
+        bot = factory(name="TestBot")
+        self.assertIsInstance(bot, EVBot)
+        self.assertEqual(bot.n_horizon, 7)
+
+
+class TestPrintRoundRobinReport(unittest.TestCase):
+    """print_round_robin_report: smoke test that it runs without crashing."""
+
+    def test_runs_without_error(self):
+        results = {"EVBot(N=1)": 12, "EVBot(N=3)": 28, "EVBot(N=5)": 30, "EVBot(N=7)": 30}
+        try:
+            print_round_robin_report(results, n_games=100)
+        except Exception as e:
+            self.fail(f"print_round_robin_report raised {e}")
+
+    def test_empty_results(self):
+        """Empty results dict should not crash."""
+        try:
+            print_round_robin_report({}, n_games=0)
+        except Exception as e:
+            self.fail(f"print_round_robin_report raised {e}")
 
 
 if __name__ == "__main__":
