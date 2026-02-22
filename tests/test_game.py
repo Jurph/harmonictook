@@ -4,7 +4,7 @@
 
 import unittest
 from unittest.mock import patch, MagicMock
-from harmonictook import Game, Bot, ThoughtfulBot, Human, TVStation
+from harmonictook import Game, Bot, ThoughtfulBot, Human, TVStation, GameState, PlayerSnapshot, NullDisplay, UpgradeCard
 
 
 class TestGameCreation(unittest.TestCase):
@@ -114,6 +114,93 @@ class TestMain(unittest.TestCase):
                 harmonictook.main()
         mock_game_cls.assert_called_once_with(bots=0, humans=0)
         mock_game.run.assert_called_once()
+
+
+class TestGameHistory(unittest.TestCase):
+    """Tests for Game.history (list[GameState]) and the PlayerSnapshot/GameState dataclasses."""
+
+    def setUp(self):
+        self.game = Game(players=2)
+        self.player = self.game.players[0]
+
+    def testHistoryStartsEmpty(self):
+        """Verify a freshly constructed Game has an empty history."""
+        self.assertEqual(self.game.history, [])
+
+    @patch('harmonictook.random.randint', return_value=12)
+    def testHistoryGrowsAfterEachTurn(self, _):
+        """Verify history gains one entry per next_turn() call."""
+        self.game.next_turn(NullDisplay())
+        self.assertEqual(len(self.game.history), 1)
+        self.game.next_turn(NullDisplay())
+        self.assertEqual(len(self.game.history), 2)
+
+    @patch('harmonictook.random.randint', return_value=12)
+    def testHistorySnapshotFields(self, _):
+        """Verify GameState captures turn_number, active_player, roll, and player count."""
+        self.game.next_turn(NullDisplay())
+        state = self.game.history[0]
+        self.assertIsInstance(state, GameState)
+        self.assertEqual(state.turn_number, 0)
+        self.assertEqual(state.active_player, self.player.name)
+        self.assertEqual(state.roll, 12)
+        self.assertEqual(len(state.players), 2)
+
+    @patch('harmonictook.random.randint', return_value=12)
+    def testHistoryPlayerSnapshotType(self, _):
+        """Verify history[0].players contains PlayerSnapshot objects with correct types."""
+        self.game.next_turn(NullDisplay())
+        snap = self.game.history[0].players[0]
+        self.assertIsInstance(snap, PlayerSnapshot)
+        self.assertIsInstance(snap.name, str)
+        self.assertIsInstance(snap.bank, int)
+        self.assertIsInstance(snap.landmarks, int)
+        self.assertIsInstance(snap.cards, int)
+
+    @patch('harmonictook.random.randint', return_value=12)
+    def testHistoryBankReflectsPostTurnBalance(self, _):
+        """Verify snapshot bank matches the player's actual bank after the turn completes."""
+        # Drain player so roll=12 causes no payout and they can't buy anything
+        self.player.deduct(self.player.bank)
+        self.game.next_turn(NullDisplay())
+        snap = next(s for s in self.game.history[0].players if s.name == self.player.name)
+        self.assertEqual(snap.bank, self.player.bank)
+
+    @patch('harmonictook.random.randint', return_value=12)
+    def testHistoryLandmarkCount(self, _):
+        """Verify landmarks field counts only owned landmarks (0 → 1 after buying Train Station)."""
+        self.game.next_turn(NullDisplay())
+        self.assertEqual(self.game.history[0].players[0].landmarks, 0)
+        self.player.deposit(100)
+        self.player.hasTrainStation = True
+        self.game.next_turn(NullDisplay())
+        self.assertEqual(self.game.history[1].players[0].landmarks, 1)
+
+    @patch('harmonictook.random.randint', return_value=12)
+    def testHistoryCardCountExcludesLandmarks(self, _):
+        """Verify cards field counts non-landmark cards only; buying Train Station does not increment it."""
+        # PlayerDeck starts with exactly 2 cards: Wheat Field and Bakery
+        self.player.deposit(100)
+        self.player.buy("Train Station", self.game.market)
+        self.game.next_turn(NullDisplay())
+        snap = self.game.history[0].players[0]
+        self.assertEqual(snap.cards, 2)   # Train Station (UpgradeCard) excluded
+
+    @patch('harmonictook.random.randint', return_value=12)
+    def testHistoryEventsStored(self, _):
+        """Verify GameState stores the turn's event list and it contains at least a roll event."""
+        self.game.next_turn(NullDisplay())
+        state = self.game.history[0]
+        self.assertIsInstance(state.events, list)
+        self.assertTrue(any(e.type == "roll" for e in state.events))
+
+    @patch('harmonictook.random.randint', return_value=12)
+    def testHistoryTurnNumbersAreSequential(self, _):
+        """Verify turn_number increments by 1 for each consecutive entry in history."""
+        for _ in range(4):
+            self.game.next_turn(NullDisplay())
+        for i, state in enumerate(self.game.history):
+            self.assertEqual(state.turn_number, i)
 
 
 if __name__ == "__main__":

@@ -36,6 +36,26 @@ class Event:
     card_type: int = 0      # category int for factory_count events
     message: str = ""       # fallback / pre-formatted text
 
+
+@dataclass
+class PlayerSnapshot:
+    """A lightweight snapshot of one player's state captured after a turn."""
+    name: str
+    bank: int
+    landmarks: int      # count of completed landmark buildings (0–4)
+    cards: int          # non-landmark cards in deck (engine size)
+
+
+@dataclass
+class GameState:
+    """A snapshot of the full game state after one completed turn."""
+    turn_number: int
+    active_player: str
+    roll: int | None            # final die result for this turn (post-reroll if any)
+    players: list[PlayerSnapshot]
+    events: list[Event]         # full event log for this turn
+
+
 class Player(object):
     """Base class for all players; holds bank, deck, and upgrade flags."""
 
@@ -879,6 +899,7 @@ class Game:
         self.turn_number: int = 0
         self.last_roll: int | None = None
         self.winner: Player | None = None
+        self.history: list[GameState] = []
 
     def get_current_player(self) -> Player:
         """Return the player whose turn it currently is."""
@@ -971,6 +992,22 @@ class Game:
         elif action == 'pass':
             emit(Event(type="pass", player=player.name))
 
+        self.history.append(GameState(
+            turn_number=self.turn_number,
+            active_player=player.name,
+            roll=self.last_roll,
+            players=[
+                PlayerSnapshot(
+                    name=p.name,
+                    bank=p.bank,
+                    landmarks=sum([p.hasTrainStation, p.hasShoppingMall,
+                                   p.hasAmusementPark, p.hasRadioTower]),
+                    cards=sum(1 for c in p.deck.deck if not isinstance(c, UpgradeCard)),
+                )
+                for p in self.players
+            ],
+            events=events,
+        ))
         self.turn_number += 1
         return events
 

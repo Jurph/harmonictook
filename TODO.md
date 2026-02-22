@@ -5,6 +5,47 @@
 ### Rich Bot Design
 **Dynamic card-valuation framework to support flexible bot strategies**
 
+Expected value calculations:
+- Calculate the expected income from the current board state for the next N rounds (lets bots think "a little bit" ahead or "a lot" ahead)
+- Calculate other players' expected income from same
+- Calculate whether one or two dice yield better income against current board state
+- Calculate expected income from a specific card for the next N rounds
+- Estimate which player is "ahead" based on the expected income of their board for the next N rounds
+
+**EV infrastructure — implementation ladder**
+
+Each step answers a plain-English question a bot needs to ask. Each step depends on the one above it.
+
+- **Probability tables + `p_hits(hitsOn, num_dice) -> float`**
+  *"How often do I expect a given card to hit?"*
+  Module-level constants: `ONE_DIE_PROB`, `TWO_DIE_PROB`, `P_DOUBLES = 1/6`.
+  Fundamental primitive — everything else is built on this.
+
+- **`ev(card, owner, players, N) -> float` per card color**
+  *"What income should I expect this card to generate over the next N turns?"*
+  Blue scales by player count. Green reads owner's deck (factory multipliers) and Shopping Mall flag.
+  Red is bounded by `min(payout, opponent_bank)` — a broke opponent means a clipped steal.
+  Purple (Stadium, TVStation) are tractable; BusinessCenter's payout is the *swap gain* (see below).
+  Amusement Park turns into a geometric-series turn multiplier (`× 1/(1 − P_DOUBLES)`) on the whole portfolio.
+
+- **`portfolio_ev(player, players, N) -> float`**
+  *"What total income do I expect from my whole board over the next N turns?"*
+  Sum of `ev()` over the player's deck. Also the basis for estimating who is "ahead."
+
+- **`delta_ev(card, player, players, N) -> float`**
+  *"How much better off am I if I add this card to my deck?"*
+  `portfolio_ev` with the card added minus `portfolio_ev` without. This is the correct signal for purchase decisions — it captures synergies (factory multipliers, Shopping Mall bonuses) that a card-in-isolation EV misses.
+
+- **BusinessCenter swap: argmax/argmin over `ev()`**
+  *"Which card should I steal, and which should I give away?"*
+  Take the opponent card with the highest `ev()` for me; surrender the card in my hand with the lowest `ev()` for me.
+  Net gain = `(gain_ev − loss_ev) × P(roll 6)`. Not a heuristic — the optimal swap falls directly out of the EV primitives.
+
+- **`chooseCard()` via argmax(`delta_ev`)**
+  *"Which card is the best purchase for me right now?"*
+  Replaces the static preference list in `Bot` and `ThoughtfulBot` with a principled ranking.
+  "Second-best chooser" and other personality variants are free once the sorted list exists.
+
 Build a multi-dimensional card evaluation engine that scores cards across strategic dimensions:
 - Coverage (number of die results that trigger the card)
 - Passivity (value on other players' turns, scaled by player count)
