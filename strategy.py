@@ -300,7 +300,7 @@ class EVBot(Bot):
         if not options:
             return None
         if game is None:
-            return random.choice(options)
+            raise ValueError("EVBot.chooseCard requires a Game instance")
         scored = score_purchase_options(self, game, N=1)
         for card in scored:
             if card.name in options:

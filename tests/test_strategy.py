@@ -7,6 +7,7 @@ from harmonictook import Blue, Green, Red, Stadium, TVStation, BusinessCenter, U
 from strategy import (
     ONE_DIE_PROB, TWO_DIE_PROB, P_DOUBLES,
     p_hits, ev, portfolio_ev, delta_ev, score_purchase_options,
+    EVBot,
 )
 
 
@@ -410,3 +411,30 @@ class TestEVBusinessCenter(unittest.TestCase):
         card = BusinessCenter()
         card.owner = self.owner
         self.assertAlmostEqual(ev(card, self.owner, self.game.players), 0.0, places=10)
+
+
+class TestEVBot(unittest.TestCase):
+    """EVBot raises on missing game context; selects highest-EV card when context is present."""
+
+    def setUp(self):
+        self.game = Game(players=2)
+        self.bot = EVBot(name="TestEVBot")
+        self.game.players[0] = self.bot
+        self.game.current_player_index = 0
+
+    def test_raises_without_game(self):
+        """chooseCard with game=None must raise ValueError, not silently degrade."""
+        with self.assertRaises(ValueError):
+            self.bot.chooseCard(['Wheat Field', 'Ranch'])
+
+    def test_returns_none_for_empty_options(self):
+        """Empty options list returns None regardless of game context."""
+        self.assertIsNone(self.bot.chooseCard([], self.game))
+
+    def test_returns_string_from_options(self):
+        """With a valid game, chooseCard returns a string that is in options."""
+        self.bot.bank = 999
+        options = self.game.market.names(maxcost=self.bot.bank)
+        result = self.bot.chooseCard(options, self.game)
+        self.assertIsInstance(result, str)
+        self.assertIn(result, options)
