@@ -118,14 +118,10 @@ class Player(object):
             if item.name.lower() == name.lower():
                 card = item
                 break
-            else:
-                pass
         for item in specials:
             if item.name.lower() == name.lower():
                 card = item
                 break
-            else:
-                pass
         if isinstance(card, Card):
             if self.bank >= card.cost:
                 self.deduct(card.cost)

@@ -174,38 +174,8 @@ Concrete implementations:
 
 #### Open Bugs / Tech Debt
 
-**Fixed (2025)**
-- ~~Blue.__init__ used type objects as defaults (name=str)~~ — fixed: proper annotations
-- ~~refresh_market mutated list while iterating~~ — fixed: iterate over list(self.reserve.deck)
-- ~~Store.append/remove created TypeError() but never raised~~ — fixed: now raise TypeError
-
-**Type hints (missing or wrong)**
-- `Player.__init__(self, name = "Player")` — add `name: str`
-- `chooseCard(options, market=None)` in Human/Bot/ThoughtfulBot — add `market: Store | None = None`
-- `Green.__init__(..., multiplies=None)` — add `multiplies: int | None = None`
-- `Store.names()` → `list[str]`, `Store.freq()` → `dict[Card, int]`
-- `PlayerDeck.__init__(self, owner)` — add `owner: Player`
-- `setPlayers(players=None, ...)` — add `players: int | None = None`, return `list[Player]`
-- All `players: list` params (chooseTarget, get_die_roller, trigger methods) — use `list[Player]`
-- `Game.get_purchase_options()` — return type `list[str]`
-
 **Design / correctness**
-- **Player base class** has no `chooseAction` or `chooseCard` — calling on bare `Player()` raises AttributeError; add abstract methods or default implementations
-- **Green.__init__** double-assigns `self.hitsOn` (lines 371–372): `self.hitsOn = []` then `self.hitsOn = hitsOn` — remove dead first line
-- **Player.__init__** dead fields: `self.abilities`, `self.order` never read anywhere
-- **display()** function name shadows **Display** class (lines 777 vs 781) — rename to `print_deck()` or `render_deck()`
 - **BusinessCenter.trigger** still calls `input()`/`print()` directly instead of events — not event-driven; invisible to non-terminal displays and harder to test
-- **setPlayers** else branch (unexpected `players` type) does `print(...); return` → returns `None` but annotation says `-> list` — return `[]` or raise ValueError
-- **UpgradeCard.__init__** does not set `payer`, `recipient`, `payout`, `multiplies` — code that accesses these on an UpgradeCard can AttributeError; call `super().__init__()` or set explicitly
-- **Event type** is a raw string — typo in `Event(type="mispelled")` causes silent no-op in TerminalDisplay._render; consider `EventType` enum or `Literal` union
-
-**Minor / cleanup**
-- **Card.sortvalue** imports `statistics.mean` inside the method on every call — move to module top
-- **isWinner()** uses `if ...: return True; else: return False` — replace with single `return` expression
-- **Player.dieroll** sets `self.isrollingdice = True` redundantly (next_turn already sets it before calling)
-- **describe()** docstrings missing on Stadium, TVStation, BusinessCenter, UpgradeCard
-- Scattered **else: pass** after for-loops (e.g. buy() card search, Store.names) — remove noise
-- **Bot.chooseCard** prints "Oh no - no valid purchase options" — same as Human; consider silent or distinct message
 
 **Deferred / already noted**
 - **Extract Shopping Mall logic to payout modifier system** — when card triggers restructured to receive Game
