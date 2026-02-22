@@ -439,7 +439,7 @@ class Red(Card):
 class Blue(Card):
     """Blue card: pays the bank → card owner regardless of who rolled the dice."""
 
-    def __init__(self, name=str, category=int, cost=int, payout=int, hitsOn=list):
+    def __init__(self, name: str, category: int, cost: int, payout: int, hitsOn: list):
         self.name = name
         self.category = category
         self.cost = cost
@@ -625,20 +625,18 @@ class Store(object):
         return self.frequencies
 
     def append(self, card: Card) -> None:
-        """Add card to the deck and re-sort; silently ignore non-Card objects."""
-        if isinstance(card, Card):
-            self.deck.append(card)
-            self.deck.sort()
-        else:
-            TypeError()
+        """Add card to the deck and re-sort. Raises TypeError if card is not a Card."""
+        if not isinstance(card, Card):
+            raise TypeError(f"Expected Card, got {type(card).__name__}")
+        self.deck.append(card)
+        self.deck.sort()
 
     def remove(self, card: Card) -> None:
-        """Remove card from the deck and re-sort; silently ignore non-Card objects."""
-        if isinstance(card, Card):
-            self.deck.remove(card)
-            self.deck.sort()
-        else:
-            TypeError()
+        """Remove card from the deck and re-sort. Raises TypeError if card is not a Card."""
+        if not isinstance(card, Card):
+            raise TypeError(f"Expected Card, got {type(card).__name__}")
+        self.deck.remove(card)
+        self.deck.sort()
 
 class PlayerDeck(Store):
     """A player's personal card collection; pre-loaded with Wheat Field and Bakery."""
@@ -885,7 +883,7 @@ class Game:
     def refresh_market(self) -> None:
         """Sync unique cards between reserve and market based on the current player's holdings."""
         player = self.get_current_player()
-        for card in self.reserve.deck:
+        for card in list(self.reserve.deck):
             if (card.name not in player.deck.names()) and (card.name in self.market.names()):
                 pass
             elif (card.name not in player.deck.names()) and (card.name not in self.market.names()):

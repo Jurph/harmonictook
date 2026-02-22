@@ -47,13 +47,12 @@ class TestStoreOperations(unittest.TestCase):
 
 
     def testStoreAppendNonCard(self):
-        """Verify Store.append() silently ignores non-Card objects (known bug: TypeError is created but not raised)."""
+        """Verify Store.append() raises TypeError for non-Card objects and leaves deck unchanged."""
         table = TableDeck()
         size_before = len(table.deck)
-        table.append("not a card")
-        table.append(42)
-        table.append(None)
-        # Bug: TypeError() is instantiated but never raised; deck should be unchanged
+        for bad in ("not a card", 42, None):
+            with self.assertRaises(TypeError):
+                table.append(bad)
         self.assertEqual(len(table.deck), size_before)
 
     def testPlayerDeckStrWithUpgradeCard(self):
@@ -70,11 +69,12 @@ class TestStoreOperations(unittest.TestCase):
         self.assertIn("Train Station", result)
 
     def testStoreRemoveNonCard(self):
-        """Verify Store.remove() silently ignores non-Card objects (known bug: TypeError is created but not raised)."""
+        """Verify Store.remove() raises TypeError for non-Card objects and leaves deck unchanged."""
         table = TableDeck()
         size_before = len(table.deck)
-        table.remove("not a card")
-        table.remove(42)
+        for bad in ("not a card", 42):
+            with self.assertRaises(TypeError):
+                table.remove(bad)
         self.assertEqual(len(table.deck), size_before)
 
 
