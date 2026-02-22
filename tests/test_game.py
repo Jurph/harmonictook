@@ -171,20 +171,23 @@ class TestGameHistory(unittest.TestCase):
         """Verify landmarks field counts only owned landmarks (0 → 1 after buying Train Station)."""
         self.game.next_turn(NullDisplay())
         self.assertEqual(self.game.history[0].players[0].landmarks, 0)
-        self.player.deposit(100)
         self.player.hasTrainStation = True
+        self.player.deduct(self.player.bank)  # drain to 0 — bot can't buy a second landmark
         self.game.next_turn(NullDisplay())
         self.assertEqual(self.game.history[1].players[0].landmarks, 1)
 
     @patch('harmonictook.random.randint', return_value=12)
     def testHistoryCardCountExcludesLandmarks(self, _):
         """Verify cards field counts non-landmark cards only; buying Train Station does not increment it."""
-        # PlayerDeck starts with exactly 2 cards: Wheat Field and Bakery
-        self.player.deposit(100)
+        # PlayerDeck starts with exactly 2 cards: Wheat Field and Bakery.
+        # Give just enough to buy Train Station (cost 4); bot starts with 3, needs 1 more.
+        self.player.deposit(1)
         self.player.buy("Train Station", self.game.market)
+        # bank now 0 — bot cannot buy during next_turn, so card/landmark counts are stable
         self.game.next_turn(NullDisplay())
         snap = self.game.history[0].players[0]
-        self.assertEqual(snap.cards, 2)   # Train Station (UpgradeCard) excluded
+        self.assertEqual(snap.cards, 2)     # Wheat Field + Bakery; Train Station excluded
+        self.assertEqual(snap.landmarks, 1) # Train Station counted as landmark, not card
 
     @patch('harmonictook.random.randint', return_value=12)
     def testHistoryEventsStored(self, _):
