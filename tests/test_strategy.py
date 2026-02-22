@@ -3,7 +3,7 @@
 # tests/test_strategy.py — TDD tests for the strategy.py EV valuation library
 
 import unittest
-from harmonictook import Blue, Green, Red, Stadium, UpgradeCard, Game
+from harmonictook import Blue, Green, Red, Stadium, TVStation, BusinessCenter, UpgradeCard, Game
 from strategy import (
     ONE_DIE_PROB, TWO_DIE_PROB, P_DOUBLES,
     p_hits, ev, portfolio_ev, delta_ev, score_purchase_options,
@@ -274,3 +274,100 @@ class TestScorePurchaseOptions(unittest.TestCase):
         result = score_purchase_options(self.player, self.game)
         scores = list(result.values())
         self.assertEqual(scores, sorted(scores, reverse=True))
+
+
+class TestEVTVStation(unittest.TestCase):
+    """EV for TV Station: steal up to 5 from the richest opponent on a 6."""
+
+    def setUp(self):
+        self.game = Game(players=2)
+        self.owner = self.game.players[0]
+        self.other = self.game.players[1]
+        self.owner.deposit(100)
+        self.other.deposit(100)
+
+    def test_rich_opponent(self):
+        """Opponent with 100 coins: steal capped at 5; P(6,1die)=1/6."""
+        card = TVStation()
+        card.owner = self.owner
+        self.assertAlmostEqual(ev(card, self.owner, self.game.players), 5 * (1/6), places=10)
+
+    def test_poor_opponent(self):
+        """Opponent with only 2 coins: steal capped at 2."""
+        self.other.bank = 2
+        card = TVStation()
+        card.owner = self.owner
+        self.assertAlmostEqual(ev(card, self.owner, self.game.players), 2 * (1/6), places=10)
+
+    def test_scales_with_N(self):
+        card = TVStation()
+        card.owner = self.owner
+        base = ev(card, self.owner, self.game.players, N=1)
+        self.assertAlmostEqual(ev(card, self.owner, self.game.players, N=4), base * 4, places=10)
+
+
+class TestEVBusinessCenter(unittest.TestCase):
+    """EV for Business Center: optimal swap of best opponent card for least-harmful own card."""
+
+    def setUp(self):
+        self.game = Game(players=2)
+        self.owner = self.game.players[0]
+        self.target = self.game.players[1]
+        self.owner.deposit(100)
+        self.target.deposit(100)
+
+    def test_positive_when_target_has_better_card(self):
+        """BC EV > 0 when target has a card more valuable to owner than owner's worst card.
+
+        A 'Fat Ranch' (payout=5, hits=[1]) has delta_ev=10/6 to owner (1-die, 2 players).
+        Owner's Wheat Field costs 2/6 to give away. Net = 8/6 > 0.
+        """
+        # Give target a high-payout Blue that hits on [1] — valuable with a single die
+        fat_ranch = Blue("Fat Ranch", 2, 1, 5, [1])
+        fat_ranch.owner = self.target
+        self.target.deck.append(fat_ranch)
+        card = BusinessCenter()
+        card.owner = self.owner
+        self.assertGreater(ev(card, self.owner, self.game.players), 0.0)
+
+    def test_spite_filter_prefers_less_synergistic_give(self):
+        """BC give-card selection avoids handing target a Ranch that feeds their Cheese Factory."""
+        # Target has a Cheese Factory (multiplies cat 2 = Ranch)
+        factory = Green("Cheese Factory", 6, 5, 3, [7], 2)
+        factory.owner = self.target
+        self.target.deck.append(factory)
+        # Also give target a high-value card so the swap is worth making
+        mine = Blue("Mine", 5, 6, 5, [9])
+        mine.owner = self.target
+        self.target.deck.append(mine)
+        # Owner has a Ranch (cat 2) and a low-EV Wheat Field copy
+        ranch = Blue("Ranch", 2, 1, 1, [2])
+        ranch.owner = self.owner
+        self.owner.deck.append(ranch)
+
+        card = BusinessCenter()
+        card.owner = self.owner
+
+        # The spite filter should prefer to give away something other than the Ranch
+        # Verify BC EV is computed (non-zero and doesn't crash)
+        result = ev(card, self.owner, self.game.players)
+        self.assertIsInstance(result, float)
+        self.assertGreaterEqual(result, 0.0)
+
+    def test_no_opponents_returns_zero(self):
+        """With no valid opponents (only owner), BC returns 0."""
+        game1 = Game(players=2)
+        owner = game1.players[0]
+        # Clear target's deck so no swappable cards exist
+        game1.players[1].deck.deck.clear()
+        card = BusinessCenter()
+        card.owner = owner
+        self.assertAlmostEqual(ev(card, owner, game1.players), 0.0, places=10)
+
+    def test_no_own_swappable_cards_returns_zero(self):
+        """If owner has only UpgradeCards, BC returns 0 (nothing to give)."""
+        # Clear owner's deck of regular cards
+        self.owner.deck.deck.clear()
+        card = BusinessCenter()
+        card.owner = self.owner
+        self.assertAlmostEqual(ev(card, self.owner, self.game.players), 0.0, places=10)

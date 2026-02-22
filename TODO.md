@@ -25,7 +25,7 @@ Each step answers a plain-English question a bot needs to ask. Each step depends
   *"What income should I expect this card to generate over the next N turns?"*
   Blue ✅, Green ✅ (factory multipliers + Shopping Mall), Red ✅ (bounded by opponent bank),
   Stadium ✅, Amusement Park turn multiplier ✅ (`× 1/(1 − P_DOUBLES)`).
-  TVStation and BusinessCenter: stubs in place, not yet implemented.
+  TVStation ✅, BusinessCenter ✅ (optimal swap: delta_ev gain side, spite-filtered give side).
 
 - ✅ **`portfolio_ev(player, players, N) -> float`** (`strategy.py`)
   *"What total income do I expect from my whole board over the next N turns?"*
@@ -36,11 +36,11 @@ Each step answers a plain-English question a bot needs to ask. Each step depends
   Captures factory synergies and UpgradeCard portfolio-diff. `score_purchase_options()` wraps
   this into a ranked `{Card: float}` dict for direct use in `chooseCard()`.
 
-- **BusinessCenter swap: argmax/argmin over `ev()`**
+- ✅ **BusinessCenter swap: argmax/argmin over `delta_ev()`** (`strategy.py`)
   *"Which card should I steal, and which should I give away?"*
-  Take the opponent card with the highest `ev()` for me; surrender the card in my hand with the lowest `ev()` for me.
-  Net gain = `(gain_ev − loss_ev) × P(roll 6)`. Not a heuristic — the optimal swap falls directly out of the EV primitives.
-  `_ev_businesscenter` stub in `strategy.py`; also need `_ev_tvstation`.
+  Per opponent: take the card with highest `delta_ev` to owner (factory synergies included);
+  give away the least-harmful of owner's bottom-4 cards by EV — spite filter prevents handing
+  the opponent a card that powers their engine. Give and take must be from the same opponent.
 
 - **`chooseCard()` via argmax(`delta_ev`)**
   *"Which card is the best purchase for me right now?"*
@@ -231,4 +231,4 @@ Concrete implementations:
 - CircleCI measures coverage on every push — check CI rather than running pytest locally
 - Continue to run `ruff` to ensure our syntax is clear and Pythonic
 
-Current state: **155 tests**, ruff clean.
+Current state: **162 tests**, ruff clean.

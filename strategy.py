@@ -71,7 +71,10 @@ def ev(card: Card, owner: Player, players: list[Player], N: int = 1) -> float:
         return _ev_red(card, owner, players, N)
     if isinstance(card, Stadium):
         return _ev_stadium(card, owner, players, N)
-    # TVStation, BusinessCenter: not yet implemented
+    if isinstance(card, TVStation):
+        return _ev_tvstation(card, owner, players, N)
+    if isinstance(card, BusinessCenter):
+        return _ev_businesscenter(card, owner, players, N)
     return 0.0
 
 
@@ -117,19 +120,57 @@ def _ev_stadium(card: Stadium, owner: Player, players: list[Player], N: int) -> 
 
 
 def _ev_tvstation(card: TVStation, owner: Player, players: list[Player], N: int) -> float:
-    """EV for TV Station: steal up to 5 from the richest available opponent on a 6."""
-    # TODO: implement
-    # min(5, max opponent bank) * p_hits([6], _num_dice(owner)) * _turn_multiplier(owner) * N
-    return 0.0
+    """EV for TV Station: steal up to 5 from the richest opponent when owner rolls a 6."""
+    opponents = [p for p in players if p is not owner]
+    if not opponents:
+        return 0.0
+    max_bank = max(p.bank for p in opponents)
+    steal = min(5, max_bank)
+    return steal * p_hits([6], _num_dice(owner)) * _turn_multiplier(owner) * N
 
 
 def _ev_businesscenter(card: BusinessCenter, owner: Player, players: list[Player], N: int) -> float:
-    """EV for Business Center: swap best opponent card for worst own card on a 6."""
-    # TODO: implement
-    # best_gain = max ev(c, owner, players, N=1) over opponent non-upgrade cards
-    # worst_loss = min ev(c, owner, players, N=1) over own non-upgrade cards
-    # net = max(0, best_gain - worst_loss) * p_hits([6], ...) * _turn_multiplier * N
-    return 0.0
+    """EV for Business Center: optimal card swap on a 6.
+
+    For each opponent, find the best (take, give) pair:
+      - take: opponent card with highest delta_ev to owner (captures synergy gains)
+      - give: among owner's bottom-4 cards by EV, pick the one worth least to that opponent
+              (spite filter: don't hand them a card that powers their engine)
+
+    Give and take must be from the same opponent. Net = best_take_gain - give_loss.
+    BusinessCenter cards are excluded from both sides to prevent recursive EV calls.
+    """
+    opponents = [p for p in players if p is not owner]
+    if not opponents:
+        return 0.0
+
+    own_cards = [c for c in owner.deck.deck
+                 if not isinstance(c, (UpgradeCard, BusinessCenter))]
+    if not own_cards:
+        return 0.0
+
+    best_net = 0.0
+
+    for target in opponents:
+        target_cards = [c for c in target.deck.deck
+                        if not isinstance(c, (UpgradeCard, BusinessCenter))]
+        if not target_cards:
+            continue
+
+        # Best card to take: maximises delta_ev to owner (factory synergies included)
+        best_gain = max(delta_ev(c, owner, players, 1) for c in target_cards)
+
+        # Best card to give: bottom-4 own cards by EV, then least valuable to target
+        own_by_ev = sorted(own_cards, key=lambda c: ev(c, owner, players, 1))
+        bottom_4 = own_by_ev[:4]
+        best_give = min(bottom_4, key=lambda c: delta_ev(c, target, players, 1))
+        give_loss = ev(best_give, owner, players, 1)
+
+        net = best_gain - give_loss
+        if net > best_net:
+            best_net = net
+
+    return best_net * p_hits([6], _num_dice(owner)) * _turn_multiplier(owner) * N
 
 
 def _factory_synergy_gain(new_card: Card, player: Player, players: list[Player], N: int) -> float:
