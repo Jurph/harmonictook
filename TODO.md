@@ -104,7 +104,8 @@ Architecture:
 
 ### Meta-Game Features
 - Statistics tracking (win rates, average game length, card value analysis)
-- Tournament mode (best of N games, ladder rankings)
+- ✅ Tournament harness (`tournament.py`): BUE vs Bot sparring partners, 2/3/4-player brackets, win/loss report
+- Tournament mode enhancements: Elo ratings, turns-to-victory, positional bias correction, multi-BUE ladder
 - Bot vs bot simulations for strategy testing
 - Export game logs for analysis
 
@@ -234,4 +235,4 @@ Concrete implementations:
 - CircleCI measures coverage on every push — check CI rather than running pytest locally
 - Continue to run `ruff` to ensure our syntax is clear and Pythonic
 
-Current state: **165 tests**, ruff clean.
+Current state: **179 tests**, ruff clean.
