@@ -10,12 +10,24 @@ import argparse
 from functools import total_ordering
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from statistics import mean
+from typing import Literal
+
+
+EventType = Literal[
+    "turn_start", "roll", "reroll", "card_activates",
+    "payout", "payout_skip", "factory_count",
+    "steal", "steal_activate", "steal_target", "steal_no_target", "steal_skip",
+    "collect", "bc_activate", "bc_bot_payout", "bc_swap", "bc_no_cards", "bc_no_target", "bc_skip",
+    "bank_status", "deck_state", "buy", "buy_failed", "buy_not_found",
+    "pass", "win", "doubles_bonus", "warn",
+]
 
 
 @dataclass
 class Event:
     """A discrete game occurrence passed from logic to a Display renderer."""
-    type: str
+    type: EventType
     player: str = ""        # primary player name
     card: str = ""          # card name
     target: str = ""        # target player name (steals, swaps)
@@ -27,11 +39,9 @@ class Event:
 class Player(object):
     """Base class for all players; holds bank, deck, and upgrade flags."""
 
-    def __init__(self, name = "Player"):
+    def __init__(self, name: str = "Player"):
         self.name = name
-        self.order = 0
         self.isrollingdice = False
-        self.abilities = 0
         self.bank = 3                  # Everyone starts with 3 coins
         self.deck = PlayerDeck(self)
         self.hasTrainStation = False
@@ -41,14 +51,10 @@ class Player(object):
 
     def isWinner(self) -> bool:
         """Return True if the player holds all four upgrade cards."""
-        if self.hasAmusementPark and self.hasRadioTower and self.hasShoppingMall and self.hasTrainStation:
-            return True
-        else:
-            return False
+        return self.hasAmusementPark and self.hasRadioTower and self.hasShoppingMall and self.hasTrainStation
 
     def dieroll(self) -> tuple[int, bool]:
         """Roll dice as determined by chooseDice(); return (total, isDoubles)."""
-        self.isrollingdice = True
         isDoubles = False
         dice = self.chooseDice()
         if dice == 1:
@@ -73,7 +79,15 @@ class Player(object):
         """Return True if the player wants to use the Radio Tower to re-roll; base always returns False."""
         return False
 
-    def chooseTarget(self, players: list) -> Player | None:
+    def chooseAction(self, availableCards: Store) -> str:
+        """Choose a turn action; subclasses must implement this method."""
+        raise NotImplementedError
+
+    def chooseCard(self, options: list, market: Store | None = None) -> str | None:
+        """Choose a card to buy; subclasses must implement this method."""
+        raise NotImplementedError
+
+    def chooseTarget(self, players: list[Player]) -> Player | None:
         """Return a randomly selected non-rolling player to target, or None if no valid targets."""
         # Default: random choice
         valid_targets = [p for p in players if not p.isrollingdice]
@@ -165,12 +179,12 @@ class Human(Player):
                 return 'pass'
             elif 's' in action:
                 print("\n-=-= Available Cards =-=-")
-                display(availableCards)
+                print_deck(availableCards)
                 continue
             else:
                 print("Please enter B, P, or S.")
 
-    def chooseCard(self, options: list, market=None) -> str | None:
+    def chooseCard(self, options: list, market: Store | None = None) -> str | None:
         """Prompt the human to pick a card; shows a rich table when market is supplied."""
         if len(options) == 0:
             print("Oh no - no valid purchase options this turn.")
@@ -203,7 +217,7 @@ class Human(Player):
                 return True
         return False
 
-    def chooseTarget(self, players: list) -> Player | None:
+    def chooseTarget(self, players: list[Player]) -> Player | None:
         """Prompt the human to pick a target from non-rolling players; returns the chosen player or None."""
         valid_targets = [p for p in players if not p.isrollingdice]
         if not valid_targets:
@@ -232,10 +246,9 @@ class Bot(Player):
             return 'buy'
         return 'pass'
 
-    def chooseCard(self, options: list, market=None) -> str | None:
+    def chooseCard(self, options: list, market: Store | None = None) -> str | None:
         """Return a randomly selected card name from options, or None if the list is empty."""
         if len(options) == 0:
-            print("Oh no - no valid purchase options this turn.")
             return None
         return random.choice(options)
 
@@ -256,10 +269,9 @@ class Bot(Player):
 class ThoughtfulBot(Bot):
     """Priority-driven bot that follows a fixed card-preference ordering."""
 
-    def chooseCard(self, options: list, market=None) -> str | None:
+    def chooseCard(self, options: list, market: Store | None = None) -> str | None:
         """Return the highest-priority card name available in options per the bot's preference list."""
         if len(options) == 0:
-            print("Can't buy anything.")
             return None
         else:
             upgrades = ["Radio Tower",
@@ -298,7 +310,7 @@ class ThoughtfulBot(Bot):
             return random.choice([1,2,2,2,2])
 
 
-def get_die_roller(players: list) -> Player:
+def get_die_roller(players: list[Player]) -> Player:
     """Return the player whose isrollingdice flag is True, or raise ValueError if none."""
     for person in players:
         if person.isrollingdice:
@@ -329,7 +341,6 @@ class Card(object):
 
     def sortvalue(self) -> float:
         """Return a float used for stable deck ordering: mean hitsOn, then cost, then name."""
-        from statistics import mean
         value = 0.000
         value += mean(self.hitsOn)   # Sort by mean hit value
         value += self.cost/100                  # Then by cost
@@ -362,13 +373,12 @@ class Card(object):
 class Green(Card):
     """Green card: pays the bank → die-roller on their own turn; optionally multiplies by category count."""
 
-    def __init__(self, name: str, category: int, cost: int, payout: int, hitsOn: list, multiplies=None):
+    def __init__(self, name: str, category: int, cost: int, payout: int, hitsOn: list, multiplies: int | None = None):
         self.name = name
         self.category = category
         self.cost = cost
         self.payout = payout
         self.multiplies = multiplies
-        self.hitsOn = []
         self.hitsOn = hitsOn
         self.payer = 0         # Green cards always pay out from the bank (0)
         self.recipient = 1     # Green cards always pay to the die roller (1)
@@ -384,7 +394,7 @@ class Green(Card):
         suffix = " (+1 with Shopping Mall)" if self.name == "Convenience Store" else ""
         return f"Pays {self.payout} coin(s) from bank when you roll{suffix}"
 
-    def trigger(self, players: list) -> list[Event]:
+    def trigger(self, players: list[Player]) -> list[Event]:
         """Pay the die-roller from the bank if it is their turn; factory cards multiply by matching category count."""
         events: list[Event] = []
         if self.owner.isrollingdice:
@@ -425,7 +435,7 @@ class Red(Card):
         suffix = " (+1 with Shopping Mall)" if self.name in ("Cafe", "Family Restaurant") else ""
         return f"Steals {self.payout} coin(s) from the roller on their turn{suffix}"
 
-    def trigger(self, players: list) -> list[Event]:
+    def trigger(self, players: list[Player]) -> list[Event]:
         """Deduct payout coins from the die-roller and deposit them with the card owner."""
         dieroller = get_die_roller(players)
         payout_amount = self.payout
@@ -452,7 +462,7 @@ class Blue(Card):
         """Describe this Blue card's passive income effect."""
         return f"Pays {self.payout} coin(s) to owner on any player's roll"
 
-    def trigger(self, players: list) -> list[Event]:
+    def trigger(self, players: list[Player]) -> list[Event]:
         """Deposit payout coins from the bank into the card owner's account."""
         self.owner.deposit(self.payout)
         return [Event(type="payout", card=self.name, player=self.owner.name, value=self.payout)]
@@ -470,9 +480,10 @@ class Stadium(Card):
         self.payout = 2
 
     def describe(self) -> str:
+        """Describe the Stadium's collect-from-all effect."""
         return f"Collect {self.payout} coins from EACH player when you roll 6"
 
-    def trigger(self, players: list) -> list[Event]:
+    def trigger(self, players: list[Player]) -> list[Event]:
         """Collect 2 coins from each player and deposit them with the die-roller."""
         events: list[Event] = []
         dieroller = get_die_roller(players)
@@ -495,9 +506,10 @@ class TVStation(Card):
         self.payout = 5
 
     def describe(self) -> str:
+        """Describe the TV Station's targeted-steal effect."""
         return f"Steal {self.payout} coins from a chosen player when you roll 6"
 
-    def trigger(self, players: list) -> list[Event]:
+    def trigger(self, players: list[Player]) -> list[Event]:
         """If the owner is the die-roller, steal up to 5 coins from a chosen target."""
         events: list[Event] = []
         dieroller = get_die_roller(players)
@@ -528,9 +540,10 @@ class BusinessCenter(Card):
         self.payout = 0         # Payout is the ability to swap cards (!)
 
     def describe(self) -> str:
+        """Describe the Business Center's card-swap effect."""
         return "Swap one of your cards with any player's card when you roll 6"
 
-    def trigger(self, players: list) -> list[Event]:
+    def trigger(self, players: list[Player]) -> list[Event]:
         """If the owner is the die-roller, swap a card with a target (or give the bot 5 coins)."""
         events: list[Event] = []
         dieroller = get_die_roller(players)
@@ -575,6 +588,7 @@ class UpgradeCard(Card):
     }
 
     def __init__(self, name: str):
+        super().__init__()
         self.name = name
         self.cost = self.orangeCards[name][0]
         self.category = self.orangeCards[name][1]
@@ -589,6 +603,7 @@ class UpgradeCard(Card):
     }
 
     def describe(self) -> str:
+        """Return the permanent ability description for this landmark card."""
         return self._descriptions.get(self.name, "")
 
     def bestowPower(self) -> None:
@@ -603,17 +618,15 @@ class Store(object):
         self.deck = []
         self.frequencies = {}
 
-    def names(self, maxcost: int = 99, flavor: type = Card) -> list:
+    def names(self, maxcost: int = 99, flavor: type = Card) -> list[str]:
         """Return a de-duplicated list of card names with cost ≤ maxcost and matching flavor type."""
         namelist = []
         for card in self.deck:
             if (card.name not in namelist) and isinstance(card, flavor) and (card.cost <= maxcost):
                 namelist.append(card.name)
-            else:
-                pass
         return namelist
 
-    def freq(self) -> dict:
+    def freq(self) -> dict[Card, int]:
         """Return a {card: count} dict of card occurrences and cache it in self.frequencies."""
         f = {}
         for card in self.deck:
@@ -641,7 +654,7 @@ class Store(object):
 class PlayerDeck(Store):
     """A player's personal card collection; pre-loaded with Wheat Field and Bakery."""
 
-    def __init__(self, owner):
+    def __init__(self, owner: Player):
         self.deck = []
         self.frequencies = {}
         self.owner = owner
@@ -703,7 +716,7 @@ class UniqueDeck(Store):
         self.deck.sort()
 
 # ==== Define top-level game functions ====
-def setPlayers(players=None, bots: int = 0, humans: int = 0) -> list:
+def setPlayers(players: int | None = None, bots: int = 0, humans: int = 0) -> list[Player]:
     """Build and return the player list from explicit counts, an integer, or interactive prompts."""
     playerlist = []
     if bots > 0 or humans > 0:
@@ -752,8 +765,7 @@ def setPlayers(players=None, bots: int = 0, humans: int = 0) -> list:
         elif players > 4:
             players = 4
     else:
-        print("Unexpected variable for `players` in call to setPlayers()")
-        return
+        raise ValueError(f"Unexpected type for `players` in call to setPlayers(): {type(players)}")
 
     if players >=2 and players <= 4:
         for num in range(players):
@@ -772,7 +784,7 @@ def deck_to_string(deckObject: Store) -> str:
     return rowstring
 
 
-def display(deckObject: Store) -> None:
+def print_deck(deckObject: Store) -> None:
     """Print a formatted frequency table for the given Store's cards."""
     print(deck_to_string(deckObject))
 
@@ -876,7 +888,7 @@ class Game:
         """Return the player whose turn it currently is."""
         return self.players[self.current_player_index]
 
-    def get_purchase_options(self) -> list:
+    def get_purchase_options(self) -> list[str]:
         """Return card names in the market affordable by the current player."""
         return self.market.names(maxcost=self.get_current_player().bank)
 

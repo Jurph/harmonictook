@@ -106,7 +106,7 @@ class TestCards(unittest.TestCase):
         otherbot.buy("Mine", self.game.market)
         testbot.buy("Apple Orchard", self.game.market)
         otherbot.buy("Apple Orchard", self.game.market)
-        testbot.dieroll()
+        testbot.isrollingdice = True
         for dieroll in range(1, 12):
             for bot in self.game.players:
                 for card in bot.deck.deck:

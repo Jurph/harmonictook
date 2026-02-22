@@ -196,12 +196,10 @@ class TestSetPlayers(unittest.TestCase):
         result = setPlayers(5)
         self.assertEqual(len(result), 4)
 
-    @patch('builtins.print')
-    def testSetPlayersUnexpectedType(self, mock_print):
-        """Verify setPlayers(3.14) prints a warning and returns None."""
-        result = setPlayers(3.14)
-        self.assertIsNone(result)
-        self.assertTrue(any('Unexpected' in str(c) for c in mock_print.call_args_list))
+    def testSetPlayersUnexpectedType(self):
+        """Verify setPlayers(3.14) raises ValueError for an unexpected argument type."""
+        with self.assertRaises(ValueError):
+            setPlayers(3.14)
 
     @patch('builtins.print')
     @patch('builtins.input', side_effect=['b', 'Robo', 'b', 'Thinker', 'n'])

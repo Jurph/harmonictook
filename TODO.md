@@ -96,10 +96,10 @@ Game
 ✅ Game.next_turn(display) -> list[Event]  # Execute one full turn, emit events in real-time
 ✅ Game.refresh_market()                # Sync unique cards with current player's holdings
 ✅ Game.run(display)                    # Full game loop with doubles/win detection
-   Game.roll_dice() -> list[Event]      # Roll phase as discrete step (future refactor)
-   Game.resolve_cards() -> list[Event]  # Card triggers as discrete step (future refactor)
-   Game.buy_phase() -> list[Event]      # Buy phase as discrete step (future refactor)
-   Game.check_winner() -> bool          # Move win check from Player.isWinner() to Game
+   [WON'T FIX] Game.roll_dice() -> list[Event]      # emit() already provides per-event hooks; YAGNI
+   [WON'T FIX] Game.resolve_cards() -> list[Event]  # same — no concrete consumer needs this split
+   [WON'T FIX] Game.buy_phase() -> list[Event]      # same
+   [WON'T FIX] Game.check_winner() -> bool          # win condition is pure Player state; Player.isWinner() is correct
 ```
 
 #### Game Class - Query Methods (partial)
@@ -128,7 +128,7 @@ Any display implements the same interface:
 ```
 ✅ Display.show_events(events: list[Event])    # Render a batch of events
    Display.show_state(game: Game)              # Render current game state
-   Display.get_player_choice(options) -> str   # Prompt for input (deferred)
+   [WON'T FIX] Display.get_player_choice(options) -> str   # SRP violation; input belongs in Player hierarchy
 ```
 
 Concrete implementations:
@@ -156,7 +156,7 @@ Concrete implementations:
 ✅ main() game loop                               → Game.run(display=TerminalDisplay())
 ✅ print() calls in logic                         → Event objects via emit()
    setPlayers()                                   → Game._setup_players()
-   Card .trigger() methods receive players: list  → receive Game instead
+   [WON'T FIX] Card .trigger() methods receive players: list → receive Game — unnecessary coupling; triggers need the player list only
 ```
 
 #### Design-for-Test Requirements
