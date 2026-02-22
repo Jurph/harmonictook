@@ -253,6 +253,45 @@ class TestDeltaEV(unittest.TestCase):
         card.owner = self.player
         self.assertGreater(delta_ev(card, self.player, self.game.players), 0.0)
 
+    def test_radio_tower_positive_for_sparse_deck(self):
+        """Radio Tower has positive EV when most rolls yield nothing (high reroll value)."""
+        # Default deck: Wheat Field [1] and Bakery [2,3] — rolls 4,5,6 yield 0
+        card = UpgradeCard("Radio Tower")
+        card.owner = self.player
+        self.assertGreater(delta_ev(card, self.player, self.game.players), 0.0)
+
+    def test_radio_tower_zero_for_flat_deck(self):
+        """Radio Tower has zero EV when every roll yields the same income (no reroll benefit).
+
+        A deck with one Blue card hitting all six faces pays the same on every roll.
+        E_own == V(r) for all r, so max(V(r), E_own) == V(r) and gain == 0.
+        """
+        # Replace default deck with a single always-hits Blue
+        self.player.deck.deck.clear()
+        always = Blue("Always", 1, 1, 3, [1, 2, 3, 4, 5, 6])
+        always.owner = self.player
+        self.player.deck.deck.append(always)
+        card = UpgradeCard("Radio Tower")
+        card.owner = self.player
+        self.assertAlmostEqual(delta_ev(card, self.player, self.game.players), 0.0, places=10)
+
+    def test_radio_tower_larger_than_zero_with_rich_engine(self):
+        """Radio Tower EV is positive even for a rich engine — sparse high-value cards."""
+        # Add Mine (hits=[9]) — valuable but rare with 1 die (P=0); only reachable with 2 dice.
+        # Even without Train Station, Mine on [9] with 1 die = 0; reroll never helps here.
+        # Use a card that hits rarely but pays well: payout=10 on [6] only.
+        self.player.deck.deck.clear()
+        high_card = Blue("Jackpot", 1, 1, 10, [6])
+        high_card.owner = self.player
+        self.player.deck.deck.append(high_card)
+        card = UpgradeCard("Radio Tower")
+        card.owner = self.player
+        # E_own = 10*(1/6). On rolls 1-5 V(r)=0 < E_own → reroll. On roll 6 keep.
+        # E_with_RT = (1/6)*10 + (5/6)*(10/6) = 10/6 + 50/36 = 60/36 + 50/36 = 110/36
+        # gain = 110/36 - 60/36 = 50/36
+        expected_gain = 50 / 36
+        self.assertAlmostEqual(delta_ev(card, self.player, self.game.players), expected_gain, places=10)
+
 
 class TestScorePurchaseOptions(unittest.TestCase):
     """score_purchase_options returns a {Card: float} dict sorted descending by EV."""

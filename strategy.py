@@ -173,6 +173,50 @@ def _ev_businesscenter(card: BusinessCenter, owner: Player, players: list[Player
     return best_net * p_hits([6], _num_dice(owner)) * _turn_multiplier(owner) * N
 
 
+def _radio_tower_gain(player: Player, players: list[Player], N: int) -> float:
+    """EV gain per N rounds from Radio Tower: option value of rerolling a bad roll.
+
+    Optimal strategy: after rolling, reroll if V(r) < E_own (expected own-turn income),
+    since the expected value of a reroll is exactly E_own.
+
+    E_with_RT = Σ_r  P(r) × max(V(r), E_own)
+    gain/turn  = (E_with_RT − E_own) × turn_multiplier
+
+    V(r) covers own-turn income only: Blue (own payout), Green, Stadium, TVStation.
+    Red is excluded — it fires on opponents' turns and is unaffected by the owner's reroll.
+    BusinessCenter is excluded (its income is a swap, not a coin amount).
+    """
+    num_dice = _num_dice(player)
+    prob_table = ONE_DIE_PROB if num_dice == 1 else TWO_DIE_PROB
+
+    def own_roll_income(r: int) -> float:
+        total = 0.0
+        for card in player.deck.deck:
+            if r not in card.hitsOn:
+                continue
+            if isinstance(card, Blue):
+                total += card.payout
+            elif isinstance(card, Green):
+                if card.multiplies:
+                    total += card.payout * _count_category(player, card.multiplies)
+                else:
+                    payout = card.payout
+                    if player.hasShoppingMall and card.name == "Convenience Store":
+                        payout += 1
+                    total += payout
+            elif isinstance(card, Stadium):
+                total += card.payout * (len(players) - 1)
+            elif isinstance(card, TVStation):
+                opponents = [p for p in players if p is not player]
+                if opponents:
+                    total += min(5, max(p.bank for p in opponents))
+        return total
+
+    e_own = sum(prob * own_roll_income(r) for r, prob in prob_table.items())
+    e_with_rt = sum(prob * max(own_roll_income(r), e_own) for r, prob in prob_table.items())
+    return (e_with_rt - e_own) * _turn_multiplier(player) * N
+
+
 def _factory_synergy_gain(new_card: Card, player: Player, players: list[Player], N: int) -> float:
     """Return the EV boost to existing factory cards caused by adding new_card to player's deck.
 
@@ -207,6 +251,8 @@ def delta_ev(card: Card, player: Player, players: list[Player], N: int = 1) -> f
     For factory-synergy cards: adds _factory_synergy_gain on top of direct ev.
     """
     if isinstance(card, UpgradeCard):
+        if card.name == "Radio Tower":
+            return _radio_tower_gain(player, players, N)
         attr = UpgradeCard.orangeCards[card.name][2]
         old_val = getattr(player, attr, False)
         without_ev = portfolio_ev(player, players, N)

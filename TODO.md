@@ -35,6 +35,9 @@ Each step answers a plain-English question a bot needs to ask. Each step depends
   *"How much better off am I if I add this card to my deck?"*
   Captures factory synergies and UpgradeCard portfolio-diff. `score_purchase_options()` wraps
   this into a ranked `{Card: float}` dict for direct use in `chooseCard()`.
+  Radio Tower uses option-value math rather than portfolio-diff (portfolio-diff returns 0 because
+  no per-card `ev()` uses the flag): `E_with_RT = Σ_r P(r)×max(V(r), E_own)`; gain is zero for
+  flat decks and maximal for sparse high-variance decks — exactly the right incentive.
 
 - ✅ **BusinessCenter swap: argmax/argmin over `delta_ev()`** (`strategy.py`)
   *"Which card should I steal, and which should I give away?"*
@@ -231,4 +234,4 @@ Concrete implementations:
 - CircleCI measures coverage on every push — check CI rather than running pytest locally
 - Continue to run `ruff` to ensure our syntax is clear and Pythonic
 
-Current state: **162 tests**, ruff clean.
+Current state: **165 tests**, ruff clean.
