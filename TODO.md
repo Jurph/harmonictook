@@ -105,7 +105,9 @@ Architecture:
 ### Meta-Game Features
 - Statistics tracking (win rates, average game length, card value analysis)
 - ✅ Tournament harness (`tournament.py`): BUE vs Bot sparring partners, 2/3/4-player brackets, win/loss report
-- Tournament mode enhancements: Elo ratings, turns-to-victory, positional bias correction, multi-BUE ladder
+- Swiss Tournament mode: multi-bot ladder with persistent standings, Elo ratings,
+  turns-to-victory tracking, positional bias correction (randomise seat order),
+  thousands of games, bracket pairing by current rank. See `..\farkle\` for prior art.
 - Bot vs bot simulations for strategy testing
 - Export game logs for analysis
 
