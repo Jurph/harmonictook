@@ -8,6 +8,21 @@ import random
 import utility
 import argparse
 from functools import total_ordering
+from dataclasses import dataclass
+from abc import ABC, abstractmethod
+
+
+@dataclass
+class Event:
+    """A discrete game occurrence passed from logic to a Display renderer."""
+    type: str
+    player: str = ""        # primary player name
+    card: str = ""          # card name
+    target: str = ""        # target player name (steals, swaps)
+    value: int = 0          # die value, payout amount, or cost
+    is_doubles: bool = False
+    card_type: int = 0      # category int for factory_count events
+    message: str = ""       # fallback / pre-formatted text
 
 class Player(object):
     """Base class for all players; holds bank, deck, and upgrade flags."""
@@ -79,8 +94,9 @@ class Player(object):
         self.bank -= deducted
         return deducted         # ...and returns the amount that was deducted, for payment purposes
 
-    def buy(self, name: str, availableCards: Store) -> None:
+    def buy(self, name: str, availableCards: Store) -> list[Event]:
         """Purchase the named card from availableCards (or upgrades list) if affordable."""
+        events: list[Event] = []
         card = None
         specials = self.checkRemainingUpgrades()
         # Check if the name passed in is on the card list or specials list
@@ -101,17 +117,18 @@ class Player(object):
                 self.deduct(card.cost)
                 self.deck.append(card)
                 card.owner = self
-                print(f"{self.name} bought a {card.name} for {card.cost} coins, and now has {self.bank} coins.")
+                events.append(Event(type="buy", player=self.name, card=card.name, value=card.cost, target=str(self.bank)))
             else:
-                print(f"Sorry: a {card.name} costs {card.cost} and {self.name} only has {self.bank}.")
-                return
-        if isinstance(card,(Red, Green, Blue, TVStation, Stadium, BusinessCenter)):
+                events.append(Event(type="buy_failed", player=self.name, card=card.name, value=card.cost, message=str(self.bank)))
+                return events
+        if isinstance(card, (Red, Green, Blue, TVStation, Stadium, BusinessCenter)):
             availableCards.deck.remove(card)
         elif isinstance(card, UpgradeCard):
             specials.remove(card)
             card.bestowPower()
         else:
-            print(f"Sorry: we don't have anything called '{name}'.")
+            events.append(Event(type="buy_not_found", card=name))
+        return events
 
     def checkRemainingUpgrades(self) -> list:
         """Return a list of UpgradeCard objects for upgrades this player has not yet purchased."""
@@ -367,9 +384,9 @@ class Green(Card):
         suffix = " (+1 with Shopping Mall)" if self.name == "Convenience Store" else ""
         return f"Pays {self.payout} coin(s) from bank when you roll{suffix}"
 
-    def trigger(self, players: list) -> None:
+    def trigger(self, players: list) -> list[Event]:
         """Pay the die-roller from the bank if it is their turn; factory cards multiply by matching category count."""
-        subtotal = 0
+        events: list[Event] = []
         if self.owner.isrollingdice:
             if not self.multiplies:
                 payout_amount = self.payout
@@ -377,19 +394,19 @@ class Green(Card):
                 if self.owner.hasShoppingMall and self.name == "Convenience Store":
                     payout_amount += 1
                 self.owner.deposit(payout_amount)
-                print(f"{self.name} pays out {payout_amount} to {self.owner.name}.")
+                events.append(Event(type="payout", card=self.name, player=self.owner.name, value=payout_amount))
             else:
+                subtotal = 0
                 for card in self.owner.deck.deck:
                     if card.category == self.multiplies:
                         subtotal += 1
-                    else:
-                        pass
-                print(f"{self.owner.name} has {subtotal} cards of type {self.multiplies}...")
+                events.append(Event(type="factory_count", player=self.owner.name, card_type=self.multiplies, value=subtotal))
                 amount = self.payout * subtotal
-                print(f"{self.name} pays out {amount} to {self.owner.name}.")
                 self.owner.deposit(amount)
+                events.append(Event(type="payout", card=self.name, player=self.owner.name, value=amount))
         else:
-            print(f"{self.owner.name} didn't roll the dice - no payout from {self.name}.")
+            events.append(Event(type="payout_skip", player=self.owner.name, card=self.name))
+        return events
 
 class Red(Card):
     """Red card: steals coins from the die-roller and gives them to the card owner."""
@@ -408,7 +425,7 @@ class Red(Card):
         suffix = " (+1 with Shopping Mall)" if self.name in ("Cafe", "Family Restaurant") else ""
         return f"Steals {self.payout} coin(s) from the roller on their turn{suffix}"
 
-    def trigger(self, players: list) -> None:
+    def trigger(self, players: list) -> list[Event]:
         """Deduct payout coins from the die-roller and deposit them with the card owner."""
         dieroller = get_die_roller(players)
         payout_amount = self.payout
@@ -417,6 +434,7 @@ class Red(Card):
             payout_amount += 1
         payout = dieroller.deduct(payout_amount)
         self.owner.deposit(payout)
+        return [Event(type="steal", player=self.owner.name, target=dieroller.name, value=payout)]
 
 class Blue(Card):
     """Blue card: pays the bank → card owner regardless of who rolled the dice."""
@@ -434,10 +452,10 @@ class Blue(Card):
         """Describe this Blue card's passive income effect."""
         return f"Pays {self.payout} coin(s) to owner on any player's roll"
 
-    def trigger(self, players: list) -> None:
+    def trigger(self, players: list) -> list[Event]:
         """Deposit payout coins from the bank into the card owner's account."""
-        print(f"{self.name} pays out {self.payout} to {self.owner.name}.")
         self.owner.deposit(self.payout)
+        return [Event(type="payout", card=self.name, player=self.owner.name, value=self.payout)]
 
 class Stadium(Card):
     """Purple card: on a 6, collects 2 coins from every player for the die-roller."""
@@ -454,12 +472,15 @@ class Stadium(Card):
     def describe(self) -> str:
         return f"Collect {self.payout} coins from EACH player when you roll 6"
 
-    def trigger(self, players: list) -> None:
+    def trigger(self, players: list) -> list[Event]:
         """Collect 2 coins from each player and deposit them with the die-roller."""
+        events: list[Event] = []
         dieroller = get_die_roller(players)
         for person in players:
             payment = person.deduct(self.payout)
             dieroller.deposit(payment)
+            events.append(Event(type="collect", player=dieroller.name, target=person.name, value=payment))
+        return events
 
 class TVStation(Card):
     """Purple card: on a 6, lets the owner steal 5 coins from a chosen target player."""
@@ -476,21 +497,23 @@ class TVStation(Card):
     def describe(self) -> str:
         return f"Steal {self.payout} coins from a chosen player when you roll 6"
 
-    def trigger(self, players: list) -> None:
+    def trigger(self, players: list) -> list[Event]:
         """If the owner is the die-roller, steal up to 5 coins from a chosen target."""
+        events: list[Event] = []
         dieroller = get_die_roller(players)
         if dieroller == self.owner:
-            print(f"{self.owner.name} activates TV Station!")
+            events.append(Event(type="steal_activate", player=self.owner.name))
             target = dieroller.chooseTarget(players)
             if target:
-                print(f"{self.owner.name} targets {target.name}!")
+                events.append(Event(type="steal_target", player=self.owner.name, target=target.name))
                 payment = target.deduct(self.payout)
                 dieroller.deposit(payment)
-                print(f"{self.owner.name} collected {payment} coins from {target.name}.")
+                events.append(Event(type="steal", player=self.owner.name, target=target.name, value=payment))
             else:
-                print("No valid targets for TV Station.")
+                events.append(Event(type="steal_no_target", player=self.owner.name))
         else:
-            print("TV Station doesn't activate (not die roller's turn).")
+            events.append(Event(type="steal_skip"))
+        return events
 
 class BusinessCenter(Card):
     """Purple card: on a 6, lets the owner swap a card with another player (bots get 5 coins instead)."""
@@ -507,15 +530,16 @@ class BusinessCenter(Card):
     def describe(self) -> str:
         return "Swap one of your cards with any player's card when you roll 6"
 
-    def trigger(self, players: list) -> None:
+    def trigger(self, players: list) -> list[Event]:
         """If the owner is the die-roller, swap a card with a target (or give the bot 5 coins)."""
+        events: list[Event] = []
         dieroller = get_die_roller(players)
         if self.owner == dieroller:
-            print(f"{self.owner.name} activates Business Center!")
+            events.append(Event(type="bc_activate", player=self.owner.name))
             # For bots, just give them coins since card swapping is complex
             if not isinstance(dieroller, Human):
-                print(f"{dieroller.name} gets 5 coins (bot doesn't swap cards).")
                 dieroller.deposit(5)
+                events.append(Event(type="bc_bot_payout", player=dieroller.name, value=5))
             else:
                 swap_choice = input("Do you want to swap cards? ([Y]es / [N]o) ")
                 if "y" in swap_choice.lower():
@@ -531,13 +555,14 @@ class BusinessCenter(Card):
                             their_card = utility.userChoice([c.name for c in their_cards])
                             their_card_obj = [c for c in their_cards if c.name == their_card][0]
                             dieroller.swap(my_card_obj, target, their_card_obj)
-                            print(f"Swapped {my_card} for {target.name}'s {their_card}.")
+                            events.append(Event(type="bc_swap", player=dieroller.name, card=my_card, target=target.name, message=their_card))
                         else:
-                            print("Not enough swappable cards.")
+                            events.append(Event(type="bc_no_cards"))
                     else:
-                        print("No valid swap target.")
+                        events.append(Event(type="bc_no_target"))
         else:
-            print("Business Center doesn't activate (not die roller's turn).")
+            events.append(Event(type="bc_skip"))
+        return events
 
 class UpgradeCard(Card):
     """Orange landmark card that grants a permanent ability when purchased."""
@@ -737,8 +762,8 @@ def setPlayers(players=None, bots: int = 0, humans: int = 0) -> list:
             playerlist.append(Bot(name=str("Robo" + str(num))))
     return playerlist
 
-def display(deckObject: Store) -> None:
-    """Print a formatted frequency table for the given Store's cards."""
+def deck_to_string(deckObject: Store) -> str:
+    """Return a formatted frequency table for the given Store's cards as a string."""
     f = deckObject.freq()
     rowstring = ""
     for card, quantity in f.items():
@@ -746,7 +771,95 @@ def display(deckObject: Store) -> None:
         for _ in range(quantity):
             rowstring += "[]"
         rowstring += f"{quantity}\n"
-    print(rowstring)
+    return rowstring
+
+
+def display(deckObject: Store) -> None:
+    """Print a formatted frequency table for the given Store's cards."""
+    print(deck_to_string(deckObject))
+
+class Display(ABC):
+    """Abstract base class for all game renderers."""
+
+    @abstractmethod
+    def show_events(self, events: list[Event]) -> None:
+        """Render a list of game events."""
+        ...
+
+
+class TerminalDisplay(Display):
+    """Renders game events to the terminal via print()."""
+
+    def show_events(self, events: list[Event]) -> None:
+        for event in events:
+            self._render(event)
+
+    def _render(self, event: Event) -> None:  # noqa: C901
+        t = event.type
+        if t == "turn_start":
+            print(f"-=-=-= It's {event.player}'s turn =-=-=-")
+        elif t == "roll":
+            print(f"{event.player} rolled a {event.value}.")
+        elif t == "reroll":
+            print(f"{event.player} uses the Radio Tower to re-roll!")
+        elif t == "card_activates":
+            print(f"{event.player}'s {event.card} activates on a {event.value}...")
+        elif t == "payout":
+            print(f"{event.card} pays out {event.value} to {event.player}.")
+        elif t == "payout_skip":
+            print(f"{event.player} didn't roll the dice - no payout from {event.card}.")
+        elif t == "factory_count":
+            print(f"{event.player} has {event.value} cards of type {event.card_type}...")
+        elif t == "steal":
+            print(f"{event.player} collected {event.value} coins from {event.target}.")
+        elif t == "steal_activate":
+            print(f"{event.player} activates TV Station!")
+        elif t == "steal_target":
+            print(f"{event.player} targets {event.target}!")
+        elif t == "steal_no_target":
+            print("No valid targets for TV Station.")
+        elif t == "steal_skip":
+            print("TV Station doesn't activate (not die roller's turn).")
+        elif t == "collect":
+            pass  # Stadium collects are silent
+        elif t == "bc_activate":
+            print(f"{event.player} activates Business Center!")
+        elif t == "bc_bot_payout":
+            print(f"{event.player} gets {event.value} coins (bot doesn't swap cards).")
+        elif t == "bc_swap":
+            print(f"Swapped {event.card} for {event.target}'s {event.message}.")
+        elif t == "bc_no_cards":
+            print("Not enough swappable cards.")
+        elif t == "bc_no_target":
+            print("No valid swap target.")
+        elif t == "bc_skip":
+            print("Business Center doesn't activate (not die roller's turn).")
+        elif t == "bank_status":
+            print(f"{event.player} now has {event.value} coins.")
+        elif t == "deck_state":
+            print(event.message, end="")
+        elif t == "buy":
+            print(f"{event.player} bought a {event.card} for {event.value} coins, and now has {event.target} coins.")
+        elif t == "buy_failed":
+            print(f"Sorry: a {event.card} costs {event.value} and {event.player} only has {event.message}.")
+        elif t == "buy_not_found":
+            print(f"Sorry: we don't have anything called '{event.card}'.")
+        elif t == "pass":
+            print(f"{event.player} passes this turn.")
+        elif t == "win":
+            print(f"{event.player} wins!")
+        elif t == "doubles_bonus":
+            print(f"{event.player} rolled doubles and gets to go again!")
+        elif t == "warn":
+            print(event.message)
+
+
+class NullDisplay(Display):
+    """Swallows all events without rendering; used for testing and headless runs."""
+
+    def show_events(self, events: list[Event]) -> None:
+        pass
+
 
 class Game:
     """Encapsulates all state and logic for a single Machi Koro game."""
@@ -786,77 +899,101 @@ class Game:
             else:
                 print("WARN: Somehow left the truth table")
 
-    def next_turn(self) -> bool:
-        """Execute one full turn for the current player; return isDoubles."""
+    def next_turn(self, display: Display | None = None) -> list[Event]:
+        """Execute one full turn for the current player; return list of game events.
+
+        Events are emitted to display immediately as they occur so that
+        interactive prompts always have context rendered above them.
+        """
+        if display is None:
+            display = NullDisplay()
+        events: list[Event] = []
+
+        def emit(event: Event) -> None:
+            events.append(event)
+            display.show_events([event])
+
         player = self.get_current_player()
 
         # Reset isrollingdice flags; mark the active player
         for person in self.players:
             person.isrollingdice = False
         player.isrollingdice = True
-        isDoubles = False
 
         self.refresh_market()
 
+        # Pre-turn status: show coins and deck before any prompts fire
+        for person in self.players:
+            emit(Event(type="bank_status", player=person.name, value=person.bank))
+        deck_header = f"-=-=-={player.name}'s Deck=-=-=-\n"
+        emit(Event(type="deck_state", player=player.name, message=deck_header + deck_to_string(player.deck)))
+
         # Die Rolling Phase
-        print(f"-=-=-= It's {player.name}'s turn =-=-=-")
+        emit(Event(type="turn_start", player=player.name))
         dieroll, isDoubles = player.dieroll()
         self.last_roll = dieroll
-        print(f"{player.name} rolled a {dieroll}.")
+        emit(Event(type="roll", player=player.name, value=dieroll, is_doubles=isDoubles))
 
         # Radio Tower re-roll option
         player._last_roll = dieroll
         if player.chooseReroll():
-            print(f"{player.name} uses the Radio Tower to re-roll!")
+            emit(Event(type="reroll", player=player.name))
             dieroll, isDoubles = player.dieroll()
             self.last_roll = dieroll
-            print(f"{player.name} rolled a {dieroll}.")
+            emit(Event(type="roll", player=player.name, value=dieroll, is_doubles=isDoubles))
 
         # Card triggers in correct color order: Red → Blue → Green → Purple
         for card_color in [Red, Blue, Green, Stadium, TVStation, BusinessCenter]:
             for person in self.players:
                 for card in person.deck.deck:
                     if dieroll in card.hitsOn and isinstance(card, card_color):
-                        print(f"{person.name}'s {card.name} activates on a {dieroll}...")
-                        card.trigger(self.players)
+                        emit(Event(type="card_activates", player=person.name, card=card.name, value=dieroll))
+                        for trigger_event in card.trigger(self.players):
+                            emit(trigger_event)
 
-        # Buy Phase
+        # Post-trigger bank status: show updated coins before the buy decision
         for person in self.players:
-            print(f"{person.name} now has {person.bank} coins.")
-        print(f"-=-=-={player.name}'s Deck=-=-=-")
-        display(player.deck)
+            emit(Event(type="bank_status", player=person.name, value=person.bank))
 
         action = player.chooseAction(self.market)
         if action == 'buy':
             options = self.market.names(maxcost=player.bank)
             cardname = player.chooseCard(options, self.market)
             if cardname is not None:
-                player.buy(cardname, self.market)
+                for buy_event in player.buy(cardname, self.market):
+                    emit(buy_event)
         elif action == 'pass':
-            print(f"{player.name} passes this turn.")
+            emit(Event(type="pass", player=player.name))
 
         self.turn_number += 1
-        return isDoubles
+        return events
 
-    def run(self) -> None:
+    def run(self, display: Display | None = None) -> None:
         """Run the game loop until a player wins."""
+        if display is None:
+            display = TerminalDisplay()
         no_winner_yet = True
         while no_winner_yet:
             for i, turntaker in enumerate(self.players):
                 self.current_player_index = i
-                is_doubles = self.next_turn()
+                # next_turn emits to display in real-time; we only inspect events for doubles
+                events = self.next_turn(display)
+                roll_events = [e for e in events if e.type == "roll"]
+                is_doubles = roll_events[-1].is_doubles if roll_events else False
                 if turntaker.isWinner():
                     no_winner_yet = False
                     self.winner = turntaker
-                    print(f"{turntaker.name} wins!")
+                    display.show_events([Event(type="win", player=turntaker.name)])
                     return
                 while is_doubles and turntaker.hasAmusementPark:
-                    print(f"{turntaker.name} rolled doubles and gets to go again!")
-                    is_doubles = self.next_turn()
+                    display.show_events([Event(type="doubles_bonus", player=turntaker.name)])
+                    events = self.next_turn(display)
+                    roll_events = [e for e in events if e.type == "roll"]
+                    is_doubles = roll_events[-1].is_doubles if roll_events else False
                     if turntaker.isWinner():
                         no_winner_yet = False
                         self.winner = turntaker
-                        print(f"{turntaker.name} wins!")
+                        display.show_events([Event(type="win", player=turntaker.name)])
                         return
 
 
@@ -867,7 +1004,7 @@ def main():
     parser.add_argument('--humans', type=int, default=0, metavar='N', help='number of human players (skips interactive setup)')
     args = parser.parse_args()
     game = Game(bots=args.bots, humans=args.humans)
-    game.run()
+    game.run(display=TerminalDisplay())
 
 
 if __name__ == "__main__":

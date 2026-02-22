@@ -40,8 +40,7 @@ Core features:
 
 Architecture:
 - Keep existing game logic intact
-- Add rendering layer on top
-- Separate game state from display
+- Add rendering layer on top (Display protocol already in place)
 - Design for asset upgrades (easy to swap in better graphics later)
 
 ### Game Expansions
@@ -51,13 +50,12 @@ Architecture:
 - House rules variants (starting coins, limited supply)
 
 ### Display & UX Polish
-- Add descriptive text to cards in menus
-- Complete Display() class implementation
 - Add ANSI-style colored text (orange, red, green, blue, purple)
 - Better game state visualization (board layout, player status)
 - Save/load game state
 - Replay/history buffer for last N turns
 - "--fast" mode to suppress verbose output
+- `LogDisplay` — writes events to file (for statistics and replay)
 
 ### Meta-Game Features
 - Statistics tracking (win rates, average game length, card value analysis)
@@ -75,9 +73,9 @@ Architecture:
 **Encapsulate all game state in a single Game object**
 
 #### Design Principles
-- Game logic produces **events**, not print output
-- Game state lives in **one place**, not scattered across function parameters
-- Display is a **consumer** of game state, not embedded in it
+- Game logic produces **events**, not print output ✅
+- Game state lives in **one place**, not scattered across function parameters ✅
+- Display is a **consumer** of game state, not embedded in it ✅
 - Bots read game state through the **same interface** as a GUI would
 
 #### Game Class - Core State ✅
@@ -94,14 +92,14 @@ Game
 
 #### Game Class - Core Methods (partial)
 ```
-✅ Game.__init__(bots, humans)      # Set up players, decks, deal starting cards
-✅ Game.next_turn() -> bool         # Execute one full turn (currently returns bool, not Events)
-✅ Game.refresh_market()            # Sync unique cards with current player's holdings
-✅ Game.run()                       # Full game loop with doubles/win detection
-   Game.roll_dice() -> list[Event]  # Roll phase as discrete step (post-Event system)
-   Game.resolve_cards() -> list[Event]  # Card triggers as discrete step (post-Event system)
-   Game.buy_phase() -> list[Event]  # Buy phase as discrete step (post-Event system)
-   Game.check_winner() -> bool      # Move win check from Player.isWinner() to Game
+✅ Game.__init__(bots, humans)          # Set up players, decks, deal starting cards
+✅ Game.next_turn(display) -> list[Event]  # Execute one full turn, emit events in real-time
+✅ Game.refresh_market()                # Sync unique cards with current player's holdings
+✅ Game.run(display)                    # Full game loop with doubles/win detection
+   Game.roll_dice() -> list[Event]      # Roll phase as discrete step (future refactor)
+   Game.resolve_cards() -> list[Event]  # Card triggers as discrete step (future refactor)
+   Game.buy_phase() -> list[Event]      # Buy phase as discrete step (future refactor)
+   Game.check_winner() -> bool          # Move win check from Player.isWinner() to Game
 ```
 
 #### Game Class - Query Methods (partial)
@@ -112,31 +110,31 @@ Game
    Game.get_market_state() -> dict             # Available cards with quantities
 ```
 
-#### Event System
+#### Event System ✅
 Game methods return Event objects instead of printing. Each event describes
 what happened; the display layer decides how to show it.
 
 ```
 Event(type="roll", player="Jurph", value=7)
-Event(type="trigger", card="Cafe", owner="Bot1", target="Jurph", amount=2)
-Event(type="buy", player="Jurph", card="Forest", cost=3)
+Event(type="payout", card="Cafe", player="Bot1", value=2)
+Event(type="buy", player="Jurph", card="Forest", value=3)
 Event(type="pass", player="Bot1")
 Event(type="win", player="Jurph")
 ```
 
-#### Display Protocol
-Any display (terminal, GUI, test harness) implements the same interface:
+#### Display Protocol ✅
+Any display implements the same interface:
 
 ```
-Display.show_events(events: list[Event])    # Render a batch of events
-Display.show_state(game: Game)              # Render current game state
-Display.get_player_choice(options) -> str   # Prompt for input (buy/pass/target)
+✅ Display.show_events(events: list[Event])    # Render a batch of events
+   Display.show_state(game: Game)              # Render current game state
+   Display.get_player_choice(options) -> str   # Prompt for input (deferred)
 ```
 
 Concrete implementations:
-- `TerminalDisplay` — prints to stdout (current behavior, preserved)
+- ✅ `TerminalDisplay` — prints to stdout (current behavior, preserved); emits in real-time
+- ✅ `NullDisplay` — swallows all output (for testing and bot simulations)
 - `GuiDisplay` — renders to Pygame window (future)
-- `NullDisplay` — swallows all output (for testing and bot simulations)
 - `LogDisplay` — writes to file (for statistics and replay)
 
 #### Migration Plan
@@ -147,17 +145,17 @@ Concrete implementations:
 ✅ 4. Move main() game loop into Game.run()
 ✅ 5. Update all tests to use Game() instead of newGame() tuple unpacking
 ✅ 6. Verified all 66 tests still pass
-   7. Introduce Event system and Display protocol (separate PR)
-   8. Replace print statements with events (separate PR)
+✅ 7. Introduce Event system and Display protocol
+✅ 8. Replace print statements with events; real-time emit to display
 ```
 
 #### What Changes
 ```
 ✅ newGame()                                      → Game.__init__()
-✅ nextTurn(playerlist, player, avail, special)   → Game.next_turn()
+✅ nextTurn(playerlist, player, avail, special)   → Game.next_turn(display)
+✅ main() game loop                               → Game.run(display=TerminalDisplay())
+✅ print() calls in logic                         → Event objects via emit()
    setPlayers()                                   → Game._setup_players()
-   display()                                      → TerminalDisplay.show_deck()
-   main() game loop                               → Game.run(display=TerminalDisplay())
    Card .trigger() methods receive players: list  → receive Game instead
 ```
 
@@ -166,9 +164,10 @@ Concrete implementations:
 ✅ Game(players=2) sufficient to create a testable game
 ✅ Game state is queryable: game.players[0].bank etc.
 ✅ Deterministic mode: mock random.randint once, control entire game
-   NullDisplay allows running full games silently in tests
-   Events are inspectable: assert "a Cafe triggered for 2 coins"
-   No input() calls in Game class (BusinessCenter.trigger() still calls input() directly)
+✅ NullDisplay allows running full games silently in tests
+✅ Events are inspectable: assert type=="pass", type=="roll" and is_doubles, etc.
+   No input() calls in Game class (Human.chooseTarget, BusinessCenter.trigger
+   still call input() directly — deferred to Human I/O refactor)
 ```
 
 ### Code Quality
@@ -178,17 +177,15 @@ Concrete implementations:
 - Card trigger order fixed: Red → Blue → Green → Purple (was player-deck order)
 - Game state encapsulated in Game class (absorbs newGame, nextTurn, main)
 - Market refresh moved to `Game.refresh_market()`
+- Event system + Display protocol (TerminalDisplay, NullDisplay)
+- All game-logic print() calls replaced with typed Event objects
+- `next_turn()` emits events in real-time so Human prompts always have context
 
 #### Remaining
 
-**Decouple output from game logic (Event system + Display protocol)**
-- Print statements become Events; Display layer renders them
-- TerminalDisplay preserves current behavior; NullDisplay enables silent testing
-- Migration plan steps 7-8 above
-
 **Extract Shopping Mall logic to payout modifier system**
 - Current: hasShoppingMall checks hardcoded in Green and Red card classes
-- Best time to fix: when card triggers are being restructured to return Events
+- Best time to fix: when card triggers are being restructured to receive Game
 
 **Add remaining type hints**
 - Easier once the API surface is stable (Game, Event, Display interfaces)
@@ -202,27 +199,9 @@ Concrete implementations:
 
 ### Testing Strategy
 
-- ✅ Test restructuring complete: 66 tests across 6 files, all passing
-- Push for 100% coverage after each major feature push
+- Push for ~100% coverage after each major feature push
 - Use TDD principles before feature pushes in order to put autopilot dev on guardrails
-- CircleCI measures coverage on every push — check CI rather than running locally
+- CircleCI measures coverage on every push — check CI rather than running pytest locally
+- Continue to run `ruff` to ensure our syntax is clear and Pythonic
 
-Remaining testing work:
-
-*High diagnostic value (do these first)*
-1. ✅ **Convenience Store + Shopping Mall** — Green card modifier path. Existing Shopping Mall test uses Cafe (Red); add test for Green Convenience Store bonus.
-2. ✅ **Business Center human swap** — Mock full input flow: swap yes/no, choose target, choose cards. Real game logic with branching.
-3. ✅ **Store.append / Store.remove with non-Card** — Pass non-Card; verify behavior. Current code does `TypeError()` but doesn't raise it — confirmed bug, tests document behavior.
-4. ✅ **Card comparison with non-Card** — Compare Card to non-Card (e.g. `card == "string"`); assert NotImplemented, no crash.
-5. ✅ **utility.userChoice()** — Mock `input()`, verify selection and bounds. Core purchase menu; currently low coverage on utility.py.
-
-*Medium diagnostic value (fill coverage gaps)*
-6. ✅ **dieroll() edge case** — When `chooseDice()` returns something other than 1 or 2, returns `7, False`. One test that triggers this defensive path.
-7. ✅ **Card base __init__** — Base Card() constructor. Subclasses override it; ensures base is constructible.
-8. ✅ **get_die_roller() ValueError** — Call with no player having `isrollingdice`; assert ValueError.
-9. ✅ **PlayerDeck.__str__ with UpgradeCards** — Deck string when it contains landmarks. Currently only Red/Green/Blue path exercised.
-10. ✅ **Game.get_purchase_options()** — Assert it returns affordable card names for current player.
-11. ✅ **Game.run()** — Full game loop, win detection, Amusement Park doubles. Needs mocked dice for deterministic run-to-win.
-12. ✅ **main()** — Entry point. Low value; optional.
-13. ✅ **Market refresh branch** — The truth-table edge case in Game.refresh_market(). One test that drives that condition.
-14. ✅ **Add tests/test_game.py** — Dedicated suite for Game class (creation, next_turn, refresh_market, run with mocks).
+Current state: **109 tests**, ruff clean.
