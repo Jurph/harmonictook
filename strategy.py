@@ -4,7 +4,8 @@
 # Pure functions only: no side effects, no I/O. Returns scores; callers decide how to act.
 
 from __future__ import annotations
-from harmonictook import Blue, Green, Red, Stadium, TVStation, BusinessCenter, Player, Game, Card, UpgradeCard  # noqa: F401 (UpgradeCard used in ev dispatch TODO)
+import random
+from harmonictook import Blue, Green, Red, Stadium, TVStation, BusinessCenter, Player, Bot, Game, Card, UpgradeCard  # noqa: F401 (UpgradeCard used in ev dispatch TODO)
 
 # ---------------------------------------------------------------------------
 # Probability tables
@@ -284,3 +285,24 @@ def score_purchase_options(player: Player, game: Game, N: int = 1) -> dict[Card,
     scored = [(card, delta_ev(card, player, game.players, N)) for card in cards]
     scored.sort(key=lambda pair: pair[1], reverse=True)
     return dict(scored)
+
+
+class EVBot(Bot):
+    """Bot that ranks purchase options by delta_ev and buys the highest-scoring card.
+
+    Inherits Bot.chooseAction (buy if affordable) and Bot.chooseDice/chooseReroll.
+    chooseCard uses score_purchase_options; falls back to random.choice if game is
+    unavailable or no scored card appears in options.
+    """
+
+    def chooseCard(self, options: list, game: Game | None = None) -> str | None:
+        """Return the name of the highest delta_ev card available in options."""
+        if not options:
+            return None
+        if game is None:
+            return random.choice(options)
+        scored = score_purchase_options(self, game, N=1)
+        for card in scored:
+            if card.name in options:
+                return card.name
+        return random.choice(options)

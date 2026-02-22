@@ -103,7 +103,7 @@ class Player(object):
         """Choose a turn action; subclasses must implement this method."""
         raise NotImplementedError
 
-    def chooseCard(self, options: list, market: Store | None = None) -> str | None:
+    def chooseCard(self, options: list, game: Game | None = None) -> str | None:
         """Choose a card to buy; subclasses must implement this method."""
         raise NotImplementedError
 
@@ -200,13 +200,13 @@ class Human(Player):
             else:
                 print("Please enter B, P, or S.")
 
-    def chooseCard(self, options: list, market: Store | None = None) -> str | None:
-        """Prompt the human to pick a card; shows a rich table when market is supplied."""
+    def chooseCard(self, options: list, game: Game | None = None) -> str | None:
+        """Prompt the human to pick a card; shows a rich table when game is supplied."""
         if len(options) == 0:
             print("Oh no - no valid purchase options this turn.")
             return None
-        if market is not None:
-            cards = [next(c for c in market.deck if c.name == name) for name in options]
+        if game is not None:
+            cards = [next(c for c in game.market.deck if c.name == name) for name in options]
             return utility.card_menu(cards)
         return utility.userChoice(options)
 
@@ -262,7 +262,7 @@ class Bot(Player):
             return 'buy'
         return 'pass'
 
-    def chooseCard(self, options: list, market: Store | None = None) -> str | None:
+    def chooseCard(self, options: list, game: Game | None = None) -> str | None:
         """Return a randomly selected card name from options, or None if the list is empty."""
         if len(options) == 0:
             return None
@@ -285,7 +285,7 @@ class Bot(Player):
 class ThoughtfulBot(Bot):
     """Priority-driven bot that follows a fixed card-preference ordering."""
 
-    def chooseCard(self, options: list, market: Store | None = None) -> str | None:
+    def chooseCard(self, options: list, game: Game | None = None) -> str | None:
         """Return the highest-priority card name available in options per the bot's preference list."""
         if len(options) == 0:
             return None
@@ -985,7 +985,7 @@ class Game:
         action = player.chooseAction(self.market)
         if action == 'buy':
             options = self.market.names(maxcost=player.bank)
-            cardname = player.chooseCard(options, self.market)
+            cardname = player.chooseCard(options, self)
             if cardname is not None:
                 for buy_event in player.buy(cardname, self.market):
                     emit(buy_event)

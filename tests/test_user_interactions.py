@@ -4,7 +4,7 @@
 
 import unittest
 from unittest.mock import patch
-from harmonictook import Game, Human, Bot, Player
+from harmonictook import Game, Human, Bot
 
 
 class TestUserInteractions(unittest.TestCase):
@@ -85,7 +85,7 @@ class TestUserInteractions(unittest.TestCase):
         human = Human(name="TestHuman")
         options = ['Wheat Field', 'Ranch']
         with patch('harmonictook.utility.card_menu', return_value='Ranch') as mock_menu:
-            result = human.chooseCard(options, game.market)
+            result = human.chooseCard(options, game)
         mock_menu.assert_called_once()
         self.assertEqual(result, 'Ranch')
 
@@ -135,8 +135,7 @@ class TestUserInteractions(unittest.TestCase):
     @patch('builtins.print')
     def testBusinessCenterHumanDeclines(self, mock_print):
         """Verify Business Center does nothing when human declines the swap."""
-        from harmonictook import BusinessCenter, Game
-        game = Game(players=2)
+        from harmonictook import BusinessCenter
         human = Human(name="Swapper")
         bot = Bot(name="Target")
         human.isrollingdice = True

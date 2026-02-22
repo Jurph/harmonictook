@@ -45,10 +45,12 @@ Each step answers a plain-English question a bot needs to ask. Each step depends
   give away the least-harmful of owner's bottom-4 cards by EV — spite filter prevents handing
   the opponent a card that powers their engine. Give and take must be from the same opponent.
 
-- **`chooseCard()` via argmax(`delta_ev`)**
-  *"Which card is the best purchase for me right now?"*
-  Replaces the static preference list in `Bot` and `ThoughtfulBot` with a principled ranking.
-  `score_purchase_options()` already produces the ranked dict; wire it into a new `EVBot` subclass.
+- ✅ **`chooseCard()` via argmax(`delta_ev`)** (`strategy.EVBot`)
+  `EVBot(Bot)` ranks affordable cards by `delta_ev` via `score_purchase_options()`; falls back
+  to `random.choice` when no game context is available. `chooseCard` now receives `game` (not
+  `market`) across the whole player hierarchy — the right architecture for a family of EV-aware bots.
+  First tournament run: EVBot 43% vs random Bots (10 games); ThoughtfulBot baseline 87%.
+  Gap points to EV model calibration work ahead (Red card bank snapshots, N horizon).
 
 Build a multi-dimensional card evaluation engine that scores cards across strategic dimensions:
 - Coverage (number of die results that trigger the card)

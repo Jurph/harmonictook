@@ -15,7 +15,8 @@ from __future__ import annotations
 import argparse
 from typing import Callable
 
-from harmonictook import Game, NullDisplay, Player, PlayerDeck, ThoughtfulBot
+from harmonictook import Game, NullDisplay, Player, PlayerDeck
+from strategy import EVBot
 
 
 def run_match(bue_factory: Callable[[str], Player], n_players: int) -> bool:
@@ -77,9 +78,9 @@ def main() -> None:
                         help="games per bracket (default: 5)")
     args = parser.parse_args()
 
-    bue_factory = ThoughtfulBot
+    bue_factory = EVBot
     results = run_tournament(bue_factory, n_games=args.games)
-    print_report(ThoughtfulBot.__name__, results)
+    print_report(EVBot.__name__, results)
 
 
 if __name__ == "__main__":
