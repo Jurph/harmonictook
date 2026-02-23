@@ -18,7 +18,7 @@
 
 # Latest: v0.9 Released 
 
-The game runs in native python (3.7 and newer) with no installation required. Type `harmonictook.py` to run the game in a terminal window. Future versions may add required dependencies, if I add a GUI. Almost all game functionality is correct. 
+The game runs in native python (3.7 and newer) with no installation required. Type `harmonictook.py` to run the game in a terminal window. Future versions may add required dependencies, if I add a GUI. You can also run `tournament.py` to test new bot strategies against each other. 
 
 # Future features
 
@@ -33,4 +33,3 @@ The game runs in native python (3.7 and newer) with no installation required. Ty
     - Add ANSI-style colored text (orange, red, green, blue, purple) for rich display
 
 - BUG: emoji don't correctly display in Windows terminals
-- BUG: cards don't execute in strict order (red, green, blue)

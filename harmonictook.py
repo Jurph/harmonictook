@@ -1109,4 +1109,6 @@ def main():
 
 
 if __name__ == "__main__":
+    import sys
+    sys.modules['harmonictook'] = sys.modules['__main__']
     main()

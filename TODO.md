@@ -1,15 +1,5 @@
 # TODO for harmonictook
 
-## Recently completed (reference only — do not re-do)
-- Stadium.trigger() skips die roller (no self-collect).
-- Red.trigger() skips when owner is roller (no self-steal).
-- Red Shopping Mall check: removed dead "Convenience Store" (Green-only).
-- utility.userChoice(): try/except ValueError, bounds 1..len(options).
-- Event: added remaining_bank; buy/buy_failed use it; display uses it.
-- testBusinessCenterBotGivesLowestScore added; TODO test count 193.
-
----
-
 ## Feature Arcs
 
 ### Rich Bot Design
@@ -52,10 +42,7 @@ Each step answers a plain-English question a bot needs to ask. Each step depends
   give away the least-harmful of owner's bottom-4 cards by EV — spite filter prevents handing
   the opponent a card that powers their engine. Give and take must be from the same opponent.
 
-- **`chooseCard()` via argmax(`delta_ev`)**
-  *"Which card is the best purchase for me right now?"*
-  Replaces the static preference list in `Bot` and `ThoughtfulBot` with a principled ranking.
-  `score_purchase_options()` already produces the ranked dict; wire it into a new `EVBot` subclass.
+- ✅ **`chooseCard()` via argmax(delta_ev)** — EVBot in strategy.py uses score_purchase_options(); next_turn() passes game into chooseCard(options, self).
 
 - **Wire EVBot into CLI (one pass)**
   - Add `--evbot` (or similar) to argparse in `main()`.
@@ -127,7 +114,6 @@ Architecture:
 ## Bugfix
 
 - Emoji don't correctly display in Windows terminals
-- (Card trigger order) If card resolution order is wrong (e.g. Red before Blue), Red could "steal off the top" after Blue paid. Verify `next_turn()` resolves in order: Red → Blue → Green → Purple; add a test that asserts this order.
 
 ## Tech Debt / Quality
 
@@ -240,15 +226,12 @@ Concrete implementations:
 - **BusinessCenter.trigger** still calls `input()`/`print()` directly for Human — not event-driven. Task: Implement `Human.chooseBusinessCenterSwap(target, my_swappable, their_swappable)` to do the prompts and return `(card_to_give, card_to_take)` or `None`; then in `BusinessCenter.trigger()` call `dieroller.chooseBusinessCenterSwap(...)` for every player type (remove the `isinstance(dieroller, Human)` branch that does input/print).
 
 **Small, one-step tasks (do in any order)**
-- **Store.freq() cache**: `append()` and `remove()` do not invalidate `self.frequencies`. Either (a) set `self.frequencies = {}` or `None` at the end of `append`/`remove`, or (b) add a one-line comment that callers must call `freq()` before reading `.frequencies`.
-- **Player.dieroll()**: For `chooseDice()` return values other than 1 or 2, the code returns `(7, False)`. Task: Replace with `raise ValueError("chooseDice() must return 1 or 2")` so bad subclasses fail fast.
 - **Game.get_player_state(player)**: Implement a method that returns a dict suitable for display, e.g. `{"name": player.name, "bank": player.bank, "landmarks": count, "cards": count}`. Used by GUI/LogDisplay.
 - **Game.get_market_state()**: Implement a method that returns available cards with quantities (e.g. list of (name, count) or dict). Used by GUI/LogDisplay.
 - **Display.show_state(game)**: Add `show_state(self, game: Game) -> None` to the Display ABC; implement no-op in NullDisplay and a simple print of player list + market in TerminalDisplay.
 
 **Deferred / later**
 - Extract Shopping Mall logic to payout modifier system (when card triggers restructured to receive Game).
-- Better use of dict() for card lookups (once trigger logic is settled).
 - Performance benchmarks (after Event system stabilizes).
 - **Optional file split**: Move Player/Human/Bot, Card hierarchy, Store hierarchy, Display, Game into separate modules (e.g. `players.py`, `cards.py`, `stores.py`, `display.py`, `game.py`) — only if maintenance becomes painful.
 - **Optional trigger dispatch**: Replace hardcoded `[Red, Blue, Green, Stadium, TVStation, BusinessCenter]` with a `Card.color` (or similar) and dispatch by color order so new card types don’t require editing `next_turn()`.
@@ -260,11 +243,7 @@ Concrete implementations:
 - CircleCI measures coverage on every push — check CI rather than running pytest locally
 - Continue to run `ruff` to ensure our syntax is clear and Pythonic
 
-Current state: **193 tests**, ruff clean.
-
 #### Tests to add (one per bullet — each gives diagnostic value)
-- **Stadium roller excluded**: In test_cards or test_integration, trigger Stadium with 2+ players and assert the die roller’s bank did not decrease (only other players paid).
-- **Red self-trigger skip**: When the roller owns a Cafe and rolls 3, assert no steal event is emitted (or roller bank unchanged). Prevents regression of Red firing on self.
 - **userChoice ValueError**: In test_utility, mock `input` to return `"abc"` then a valid number; assert no crash and that the valid choice is returned.
 - **userChoice out-of-range**: Mock `input` to return `0` or `-1` then a valid number; assert the second choice is returned (and no crash).
 - **Amusement Park bonus turn**: Integration test: one player has Amusement Park, roll doubles, assert they get a second turn (e.g. two "turn_start" or two roll events in one round).
