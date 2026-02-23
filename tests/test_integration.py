@@ -193,5 +193,41 @@ class TestMidgameIntegration(unittest.TestCase):
         self.assertEqual(before_rich - self.rich.bank, 3)       # only the toll; Mine pays from bank
 
 
+class TestTriggerOrder(unittest.TestCase):
+    """Regression tests for card trigger color order: Red → Blue → Green → Purple.
+
+    If the order were wrong (e.g. Blue before Red), a Red card could steal income
+    that Blue already paid the roller — inflating Red's effective take. The correct
+    rule is Red first (opponent collects toll before the roller earns anything).
+    """
+
+    def test_red_fires_before_green(self):
+        """On the roller's turn, Red (opponent's Cafe on [3]) precedes Green (roller's Bakery on [3])."""
+        game = Game(players=2)
+        roller = game.players[0]
+        opponent = game.players[1]
+        game.current_player_index = 0
+        roller.deposit(10)
+        opponent.deposit(10)
+
+        # Opponent owns a Cafe (Red[3]); fires when roller rolls 3, steals from roller
+        cafe = Red("Cafe", 4, 2, 1, [3])
+        cafe.owner = opponent
+        opponent.deck.append(cafe)
+        # Roller's starting deck already contains Bakery (Green[2,3])
+
+        with patch('harmonictook.random.randint', return_value=3):
+            events = game.next_turn(NullDisplay())
+
+        types = [e.type for e in events]
+        steal_idx = next(i for i, t in enumerate(types) if t == "steal")
+        payout_idx = next(
+            i for i, t in enumerate(types)
+            if t == "payout" and events[i].card == "Bakery"
+        )
+        self.assertLess(steal_idx, payout_idx,
+                        "Red (steal) must appear before Green (payout) in event order")
+
+
 if __name__ == "__main__":
     unittest.main(buffer=True)

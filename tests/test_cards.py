@@ -130,7 +130,7 @@ class TestCards(unittest.TestCase):
         for card in testbot.deck.deck:
             if isinstance(card, Stadium):
                 card.trigger(self.game.players)
-        # With 2 players: roller deducts from self (net 0) and collects 2 from other → net +2
+        # With 2 players: roller skips self, collects 2 from the other player → net +2
         self.assertEqual(testbot.bank - before, 2)
         self.assertEqual(otherbot_before - otherbot.bank, 2)
 
@@ -205,6 +205,29 @@ class TestCards(unittest.TestCase):
                 card.trigger(self.game.players)
         self.assertEqual(testbot.bank, before)
 
+    def testRedSkipsSelfTrigger(self):
+        """Red card owned by the roller returns no events and leaves all banks unchanged."""
+        cafe = Red("Cafe", 4, 2, 1, [3])
+        cafe.owner = self.testbot
+        self.testbot.deck.append(cafe)
+        self.testbot.isrollingdice = True
+        before_roller = self.testbot.bank
+        before_other = self.otherbot.bank
+        events = cafe.trigger(self.game.players)
+        self.assertEqual(events, [])
+        self.assertEqual(self.testbot.bank, before_roller)
+        self.assertEqual(self.otherbot.bank, before_other)
+
+    def testStadiumDoesNotCollectFromRoller(self):
+        """Stadium.trigger() never lists the die-roller as a collect target."""
+        stadium = Stadium()
+        stadium.owner = self.testbot
+        self.testbot.isrollingdice = True
+        events = stadium.trigger(self.game.players)
+        collect_targets = [e.target for e in events if e.type == "collect"]
+        self.assertNotIn(self.testbot.name, collect_targets)
+        self.assertGreater(len(collect_targets), 0)  # at least one other player paid
+
 
 class TestCardOrdering(unittest.TestCase):
     """Tests for Card sort ordering and comparison operators."""
@@ -254,7 +277,7 @@ class TestCardOrdering(unittest.TestCase):
         # Normal == operator with non-Card should resolve to False without raising
         self.assertFalse(wheat == "string")
         self.assertFalse(wheat == 42)
-        self.assertFalse(wheat == None)
+        self.assertFalse(wheat == None)  # noqa: E711 — explicitly testing == operator, not identity
 
     def testCardBaseInit(self):
         """Verify the base Card() constructor is instantiable and all fields start at their defaults."""

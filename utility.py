@@ -4,21 +4,17 @@
 
 def userChoice(options: list) -> str:
     """Display a numbered menu and return the element chosen by the user (1-indexed input)."""
-    madeValidChoice = False
     print(" -=-= Choose One =-=- ")
     for i in range(len(options)):
         print("[{}] : {}".format(i+1, options[i]))
-    while not madeValidChoice:
-        j = input("Your selection: ")
-        j = int(j)
-        if j <= len(options):
-            madeValidChoice = True
-            break
-        else:
-            pass
-    # Return the user's integer choice (1-N)
-    # but subtract one because options[] is zero-indexed.
-    return options[j-1]
+    while True:
+        try:
+            j = int(input("Your selection: "))
+            if 1 <= j <= len(options):
+                return options[j - 1]
+            print(f"Please enter a number between 1 and {len(options)}.")
+        except ValueError:
+            print("Please enter a number.")
 
 
 def card_menu(cards: list) -> str:

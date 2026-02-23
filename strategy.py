@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 import random
+import statistics
 from harmonictook import Blue, Green, Red, Stadium, TVStation, BusinessCenter, Player, Bot, Game, Card, UpgradeCard  # noqa: F401 (UpgradeCard used in ev dispatch TODO)
 
 # ---------------------------------------------------------------------------
@@ -218,6 +219,46 @@ def _radio_tower_gain(player: Player, players: list[Player], N: int) -> float:
     return (e_with_rt - e_own) * _turn_multiplier(player) * N
 
 
+def _train_station_gain(
+    player: Player, players: list[Player], market_cards: list[Card], N: int
+) -> float:
+    """Forward-looking EV of Train Station: gain from switching to the 2-dice card range.
+
+    Partitions market cards into 1-die-range (max hit ≤ 6) and 2-die-range (min hit ≥ 7).
+    Filters 2-die results to non-zero EV only — this naturally excludes factories with no
+    multiplier targets and Red[7+] cards (Family Restaurant) whose trigger depends on
+    opponents' dice counts, not the owner's.
+    Returns max(0, median(ev_2die_nonzero) − median(ev_1die)) × N.
+    """
+    one_die_cards = [
+        c for c in market_cards
+        if not isinstance(c, UpgradeCard) and c.hitsOn and max(c.hitsOn) <= 6
+    ]
+    two_die_cards = [
+        c for c in market_cards
+        if not isinstance(c, UpgradeCard) and c.hitsOn and min(c.hitsOn) >= 7
+    ]
+    if not two_die_cards:
+        return 0.0
+
+    old_ts = player.hasTrainStation
+    try:
+        player.hasTrainStation = False
+        evs_1die = [ev(c, player, players, 1) for c in one_die_cards]
+        player.hasTrainStation = True
+        evs_2die = [ev(c, player, players, 1) for c in two_die_cards]
+    finally:
+        player.hasTrainStation = old_ts
+
+    evs_2die_nonzero = [v for v in evs_2die if v > 0.0]
+    if not evs_2die_nonzero:
+        return 0.0
+
+    med_2die = statistics.median(evs_2die_nonzero)
+    med_1die = statistics.median(evs_1die) if evs_1die else 0.0
+    return max(0.0, med_2die - med_1die) * N
+
+
 def _factory_synergy_gain(new_card: Card, player: Player, players: list[Player], N: int) -> float:
     """Return the EV boost to existing factory cards caused by adding new_card to player's deck.
 
@@ -245,15 +286,22 @@ def portfolio_ev(player: Player, players: list[Player], N: int = 1) -> float:
     return sum(ev(card, player, players, N) for card in player.deck.deck)
 
 
-def delta_ev(card: Card, player: Player, players: list[Player], N: int = 1) -> float:
+def delta_ev(
+    card: Card, player: Player, players: list[Player],
+    N: int = 1, market_cards: list[Card] | None = None
+) -> float:
     """Return the marginal EV gain from adding card to player's deck.
 
     For UpgradeCards: temporarily sets the flag on player, diffs portfolio_ev, restores via finally.
     For factory-synergy cards: adds _factory_synergy_gain on top of direct ev.
+    When market_cards is provided, Train Station uses forward-looking valuation instead of
+    portfolio-diff (portfolio-diff undervalues it on a starting deck with no 2-die cards).
     """
     if isinstance(card, UpgradeCard):
         if card.name == "Radio Tower":
             return _radio_tower_gain(player, players, N)
+        if card.name == "Train Station" and market_cards is not None:
+            return _train_station_gain(player, players, market_cards, N)
         attr = UpgradeCard.orangeCards[card.name][2]
         old_val = getattr(player, attr, False)
         without_ev = portfolio_ev(player, players, N)
@@ -282,7 +330,10 @@ def score_purchase_options(player: Player, game: Game, N: int = 1) -> dict[Card,
         if c.name in options and c.name not in seen:
             seen.add(c.name)
             cards.append(c)
-    scored = [(card, delta_ev(card, player, game.players, N)) for card in cards]
+    scored = [
+        (card, delta_ev(card, player, game.players, N, market_cards=game.market.deck))
+        for card in cards
+    ]
     scored.sort(key=lambda pair: pair[1], reverse=True)
     return dict(scored)
 

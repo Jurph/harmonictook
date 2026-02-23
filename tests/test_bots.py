@@ -4,7 +4,7 @@
 
 import unittest
 from unittest.mock import patch
-from harmonictook import Game, Bot, ThoughtfulBot, TVStation, BusinessCenter
+from harmonictook import Game, Bot, ThoughtfulBot, TVStation, BusinessCenter, UpgradeCard
 
 
 class TestBots(unittest.TestCase):
@@ -45,17 +45,70 @@ class TestBots(unittest.TestCase):
         self.assertEqual(after - before, stolen)
         self.assertEqual(otherbot_before - otherbot_after, stolen)
 
-    def testBusinessCenterBot(self):
-        """Verify Business Center gives a bot 5 coins in lieu of the card-swap interaction."""
+    def testBusinessCenterBotNoTargetGetsCoins(self):
+        """When no valid swap target exists, bot gets 5 coins."""
         testbot = self.testbot
         testbot.buy("Business Center", self.game.market)
         testbot.isrollingdice = True
         before = testbot.bank
+        with patch.object(testbot, "chooseTarget", return_value=None):
+            for card in testbot.deck.deck:
+                if isinstance(card, BusinessCenter):
+                    card.trigger(self.game.players)
+        after = testbot.bank
+        self.assertEqual(after - before, 5)
+
+    def testBusinessCenterBotSwaps(self):
+        """When a valid target and swappable cards exist, bot swaps: take highest-cost from target, give lowest (hitsOn sum + cost)."""
+        from harmonictook import Blue
+        testbot = self.testbot
+        otherbot = self.otherbot
+        testbot.buy("Business Center", self.game.market)
+        # Give otherbot a higher-cost card so the swap is visible (bot takes highest-cost)
+        forest = Blue("Forest", 1, 3, 1, [5])
+        forest.owner = otherbot
+        otherbot.deck.append(forest)
+        testbot.isrollingdice = True
+        otherbot.isrollingdice = False
+        my_swappable_before = [c.name for c in testbot.deck.deck if not isinstance(c, UpgradeCard)]
+        their_names_before = [c.name for c in otherbot.deck.deck if not isinstance(c, UpgradeCard)]
+        self.assertIn("Forest", their_names_before)
+        bank_before = testbot.bank
         for card in testbot.deck.deck:
             if isinstance(card, BusinessCenter):
                 card.trigger(self.game.players)
-        after = testbot.bank
-        self.assertEqual(after - before, 5)
+        # Bot should have swapped, not received 5 coins
+        self.assertEqual(testbot.bank, bank_before, "Bot should not get 5 coins when swap is possible")
+        # Bot takes highest-cost from target (Forest cost 3): Forest should now be in testbot's deck
+        my_names_after = [c.name for c in testbot.deck.deck if not isinstance(c, UpgradeCard)]
+        self.assertIn("Forest", my_names_after, "Bot should take highest-cost card (Forest) from target")
+
+    def testBusinessCenterBotGivesLowestScore(self):
+        """Bot gives away the card with the lowest (sum of hitsOn + cost) score."""
+        from harmonictook import Blue, Green
+        testbot = self.testbot
+        otherbot = self.otherbot
+        testbot.buy("Business Center", self.game.market)
+        # Add a Ranch (hitsOn=[2], cost=1, score=3) so bot has:
+        #   Wheat Field (score=1+1=2), Bakery (score=2+3+1=6), Ranch (score=2+1=3), BC (score=6+8=14)
+        ranch = Blue("Ranch", 2, 1, 1, [2])
+        ranch.owner = testbot
+        testbot.deck.append(ranch)
+        # Give otherbot a high-cost card to be the take target
+        mine = Blue("Mine", 5, 6, 5, [9])
+        mine.owner = otherbot
+        otherbot.deck.append(mine)
+        testbot.isrollingdice = True
+        otherbot.isrollingdice = False
+        for card in testbot.deck.deck:
+            if isinstance(card, BusinessCenter):
+                card.trigger(self.game.players)
+        # Wheat Field (score 2) should have been given away — check it's in otherbot's deck
+        other_names = [c.name for c in otherbot.deck.deck if not isinstance(c, UpgradeCard)]
+        self.assertIn("Wheat Field", other_names, "Bot should give away Wheat Field (lowest hitsOn+cost)")
+        # Ranch (score 3) should still be in testbot's deck
+        my_names = [c.name for c in testbot.deck.deck if not isinstance(c, UpgradeCard)]
+        self.assertIn("Ranch", my_names, "Bot should keep Ranch (higher hitsOn+cost than Wheat Field)")
 
     def testThoughtfulBotPriority(self):
         """Verify ThoughtfulBot picks an upgrade over a lower-priority card when both are available."""

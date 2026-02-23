@@ -35,6 +35,7 @@ class Event:
     is_doubles: bool = False
     card_type: int = 0      # category int for factory_count events
     message: str = ""       # fallback / pre-formatted text
+    remaining_bank: int = 0 # player's bank after a buy or failed buy
 
 
 @dataclass
@@ -89,7 +90,7 @@ class Player(object):
             total = a + b
             return total, isDoubles
         else:
-            return 7, False
+            raise ValueError(f"chooseDice() must return 1 or 2, got {dice}")
 
     def chooseDice(self) -> int:
         """Return the number of dice to roll; base implementation always returns 1."""
@@ -113,6 +114,14 @@ class Player(object):
         valid_targets = [p for p in players if not p.isrollingdice]
         if valid_targets:
             return random.choice(valid_targets)
+        return None
+
+    def chooseBusinessCenterSwap(
+        self, target: Player, my_swappable: list, their_swappable: list
+    ) -> tuple[Card, Card] | None:
+        """Choose which card to give and which to take when activating Business Center.
+        Subclasses implement their own workflow (e.g. bot heuristic, CLI prompts, or GUI
+        "click opponent then choose cards"). Default: decline (return None)."""
         return None
 
     def deposit(self, amount: int) -> None:
@@ -147,9 +156,9 @@ class Player(object):
                 self.deduct(card.cost)
                 self.deck.append(card)
                 card.owner = self
-                events.append(Event(type="buy", player=self.name, card=card.name, value=card.cost, target=str(self.bank)))
+                events.append(Event(type="buy", player=self.name, card=card.name, value=card.cost, remaining_bank=self.bank))
             else:
-                events.append(Event(type="buy_failed", player=self.name, card=card.name, value=card.cost, message=str(self.bank)))
+                events.append(Event(type="buy_failed", player=self.name, card=card.name, value=card.cost, remaining_bank=self.bank))
                 return events
         if isinstance(card, (Red, Green, Blue, TVStation, Stadium, BusinessCenter)):
             availableCards.deck.remove(card)
@@ -281,6 +290,21 @@ class Bot(Player):
         if self.hasRadioTower and hasattr(self, '_last_roll'):
             return self._last_roll < 5
         return False
+
+    def chooseBusinessCenterSwap(
+        self, target: Player, my_swappable: list, their_swappable: list
+    ) -> tuple[Card, Card] | None:
+        """Choose which card to give and which to take when activating Business Center.
+        Bot default: take the highest-cost card from target; give the card with lowest
+        (sum of hitsOn + cost). Returns (card_to_give, card_to_take) or None to decline."""
+        if not my_swappable or not their_swappable:
+            return None
+        card_to_take = max(their_swappable, key=lambda c: c.cost)
+        card_to_give = min(
+            my_swappable,
+            key=lambda c: sum(getattr(c, "hitsOn", [0])) + getattr(c, "cost", 0),
+        )
+        return (card_to_give, card_to_take)
 
 class ThoughtfulBot(Bot):
     """Priority-driven bot that follows a fixed card-preference ordering."""
@@ -454,9 +478,10 @@ class Red(Card):
     def trigger(self, players: list[Player]) -> list[Event]:
         """Deduct payout coins from the die-roller and deposit them with the card owner."""
         dieroller = get_die_roller(players)
+        if self.owner is dieroller:
+            return []
         payout_amount = self.payout
-        # Shopping Mall adds +1 to cafe and convenience store payouts
-        if self.owner.hasShoppingMall and self.name in ["Cafe", "Family Restaurant", "Convenience Store"]:
+        if self.owner.hasShoppingMall and self.name in ["Cafe", "Family Restaurant"]:
             payout_amount += 1
         payout = dieroller.deduct(payout_amount)
         self.owner.deposit(payout)
@@ -500,10 +525,12 @@ class Stadium(Card):
         return f"Collect {self.payout} coins from EACH player when you roll 6"
 
     def trigger(self, players: list[Player]) -> list[Event]:
-        """Collect 2 coins from each player and deposit them with the die-roller."""
+        """Collect 2 coins from each other player and deposit them with the die-roller."""
         events: list[Event] = []
         dieroller = get_die_roller(players)
         for person in players:
+            if person is dieroller:
+                continue
             payment = person.deduct(self.payout)
             dieroller.deposit(payment)
             events.append(Event(type="collect", player=dieroller.name, target=person.name, value=payment))
@@ -544,7 +571,7 @@ class TVStation(Card):
         return events
 
 class BusinessCenter(Card):
-    """Purple card: on a 6, lets the owner swap a card with another player (bots get 5 coins instead)."""
+    """Purple card: on a 6, lets the owner swap a card with another player."""
 
     def __init__(self, name="Business Center"):
         self.name = name
@@ -565,10 +592,33 @@ class BusinessCenter(Card):
         dieroller = get_die_roller(players)
         if self.owner == dieroller:
             events.append(Event(type="bc_activate", player=self.owner.name))
-            # For bots, just give them coins since card swapping is complex
             if not isinstance(dieroller, Human):
-                dieroller.deposit(5)
-                events.append(Event(type="bc_bot_payout", player=dieroller.name, value=5))
+                # Bot: choose target and swap via chooseBusinessCenterSwap, or take 5 coins
+                target = dieroller.chooseTarget(players)
+                if target and len(target.deck.deck) > 0:
+                    my_cards = [c for c in dieroller.deck.deck if not isinstance(c, UpgradeCard)]
+                    their_cards = [c for c in target.deck.deck if not isinstance(c, UpgradeCard)]
+                    swap_result = dieroller.chooseBusinessCenterSwap(
+                        target, my_cards, their_cards
+                    )
+                    if swap_result:
+                        card_to_give, card_to_take = swap_result
+                        dieroller.swap(card_to_give, target, card_to_take)
+                        events.append(
+                            Event(
+                                type="bc_swap",
+                                player=dieroller.name,
+                                card=card_to_give.name,
+                                target=target.name,
+                                message=card_to_take.name,
+                            )
+                        )
+                    else:
+                        dieroller.deposit(5)
+                        events.append(Event(type="bc_bot_payout", player=dieroller.name, value=5))
+                else:
+                    dieroller.deposit(5)
+                    events.append(Event(type="bc_bot_payout", player=dieroller.name, value=5))
             else:
                 swap_choice = input("Do you want to swap cards? ([Y]es / [N]o) ")
                 if "y" in swap_choice.lower():
@@ -632,7 +682,6 @@ class Store(object):
 
     def __init__(self):
         self.deck = []
-        self.frequencies = {}
 
     def names(self, maxcost: int = 99, flavor: type = Card) -> list[str]:
         """Return a de-duplicated list of card names with cost ≤ maxcost and matching flavor type."""
@@ -643,15 +692,14 @@ class Store(object):
         return namelist
 
     def freq(self) -> dict[Card, int]:
-        """Return a {card: count} dict of card occurrences and cache it in self.frequencies."""
+        """Return a {card: count} dict of card occurrences in this deck."""
         f = {}
         for card in self.deck:
             if f.get(card):
                 f[card] += 1
             else:
                 f[card] = 1
-        self.frequencies = f
-        return self.frequencies
+        return f
 
     def append(self, card: Card) -> None:
         """Add card to the deck and re-sort. Raises TypeError if card is not a Card."""
@@ -672,7 +720,6 @@ class PlayerDeck(Store):
 
     def __init__(self, owner: Player):
         self.deck = []
-        self.frequencies = {}
         self.owner = owner
         self.deck.append(Blue("Wheat Field",1,1,1,[1]))
         self.deck.append(Green("Bakery",3,1,1,[2,3]))
@@ -693,7 +740,6 @@ class TableDeck(Store):
 
     def __init__(self):
         self.deck = []
-        self.frequencies = {}
         for _ in range(0,6):
             # Add six of every card: Name, category, cost, payout, hitsOn[], and optionally, what it multiplies
             self.append(Blue("Wheat Field",1,1,1,[1]))
@@ -720,7 +766,6 @@ class UniqueDeck(Store):
 
     def __init__(self, players: list):
         self.deck = []
-        self.frequencies = {}
         for _ in range(0, len(players)+1):
             self.append(TVStation())
             self.append(BusinessCenter())
@@ -749,20 +794,33 @@ def setPlayers(players: int | None = None, bots: int = 0, humans: int = 0) -> li
             playerlist.append(ThoughtfulBot(name=f"Robo{i}"))
         return playerlist
     elif players is None:
+        # Lazy import — strategy.py imports harmonictook, so importing at module level
+        # would create a circular dependency. By the time setPlayers() is called the
+        # module is fully loaded and this import resolves cleanly.
+        from strategy import EVBot  # noqa: PLC0415
+        _PLAYER_OPTIONS = [
+            "Human",
+            "Tough Bot (EV-ranked strategy)",
+            "Medium Bot (heuristic preferences)",
+            "Trivial Bot (random choices)",
+            "Pick a bot for me",
+        ]
         moreplayers = True
         while moreplayers:
-            humanorbot = input("Add a [H]uman or add a [B]ot? ")
-            if "h" in humanorbot.lower():
+            choice = utility.userChoice(_PLAYER_OPTIONS)
+            if choice == "Human":
                 playername = input("What's the human's name? ")
                 playerlist.append(Human(name=str(playername)))
-            elif "b" in humanorbot.lower():
-                playername = input("What's the bot's name? ")
-                if playername[0] == "T":
-                    playerlist.append(ThoughtfulBot(name=str(playername)))
-                else:
-                    playerlist.append(Bot(name=str(playername)))
             else:
-                print("Sorry, I couldn't find an H or B in your answer. ")
+                playername = input("What's the bot's name? ")
+                if choice == "Tough Bot (EV-ranked strategy)":
+                    playerlist.append(EVBot(name=str(playername)))
+                elif choice == "Medium Bot (heuristic preferences)":
+                    playerlist.append(ThoughtfulBot(name=str(playername)))
+                elif choice == "Trivial Bot (random choices)":
+                    playerlist.append(Bot(name=str(playername)))
+                else:  # "Pick a bot for me"
+                    playerlist.append(random.choice([EVBot, ThoughtfulBot, Bot])(name=str(playername)))
             if len(playerlist) == 4:
                 break
             elif len(playerlist) >= 2:
@@ -851,7 +909,7 @@ class TerminalDisplay(Display):
         elif t == "bc_activate":
             print(f"{event.player} activates Business Center!")
         elif t == "bc_bot_payout":
-            print(f"{event.player} gets {event.value} coins (bot doesn't swap cards).")
+            print(f"{event.player} gets {event.value} coins (no swap).")
         elif t == "bc_swap":
             print(f"Swapped {event.card} for {event.target}'s {event.message}.")
         elif t == "bc_no_cards":
@@ -865,9 +923,9 @@ class TerminalDisplay(Display):
         elif t == "deck_state":
             print(event.message, end="")
         elif t == "buy":
-            print(f"{event.player} bought a {event.card} for {event.value} coins, and now has {event.target} coins.")
+            print(f"{event.player} bought a {event.card} for {event.value} coins, and now has {event.remaining_bank} coins.")
         elif t == "buy_failed":
-            print(f"Sorry: a {event.card} costs {event.value} and {event.player} only has {event.message}.")
+            print(f"Sorry: a {event.card} costs {event.value} and {event.player} only has {event.remaining_bank}.")
         elif t == "buy_not_found":
             print(f"Sorry: we don't have anything called '{event.card}'.")
         elif t == "pass":

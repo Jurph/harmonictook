@@ -293,6 +293,37 @@ class TestDeltaEV(unittest.TestCase):
         expected_gain = 50 / 36
         self.assertAlmostEqual(delta_ev(card, self.player, self.game.players), expected_gain, places=10)
 
+    def test_train_station_positive_with_market_context(self):
+        """Train Station delta_ev > 0 on starting deck when Mine/Apple Orchard are in the market."""
+        mine = Blue("Mine", 5, 6, 5, [9])
+        apple = Blue("Apple Orchard", 3, 6, 3, [10])
+        card = UpgradeCard("Train Station")
+        card.owner = self.player
+        self.assertGreater(
+            delta_ev(card, self.player, self.game.players, market_cards=[mine, apple]),
+            0.0,
+        )
+
+    def test_train_station_zero_with_only_1die_market(self):
+        """Train Station gain is 0 when the market contains only 1-die-range cards."""
+        wheat = Blue("Wheat Field", 1, 1, 1, [1])
+        card = UpgradeCard("Train Station")
+        card.owner = self.player
+        self.assertAlmostEqual(
+            delta_ev(card, self.player, self.game.players, market_cards=[wheat]),
+            0.0, places=10,
+        )
+
+    def test_train_station_ignores_family_restaurant(self):
+        """Family Restaurant (Red[9,10]) does not contribute — opponents still roll 1 die."""
+        fam_rest = Red("Family Restaurant", 6, 3, 2, [9, 10])
+        card = UpgradeCard("Train Station")
+        card.owner = self.player
+        self.assertAlmostEqual(
+            delta_ev(card, self.player, self.game.players, market_cards=[fam_rest]),
+            0.0, places=10,
+        )
+
 
 class TestScorePurchaseOptions(unittest.TestCase):
     """score_purchase_options returns a {Card: float} dict sorted descending by EV."""

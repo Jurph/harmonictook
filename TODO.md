@@ -1,5 +1,15 @@
 # TODO for harmonictook
 
+## Recently completed (reference only — do not re-do)
+- Stadium.trigger() skips die roller (no self-collect).
+- Red.trigger() skips when owner is roller (no self-steal).
+- Red Shopping Mall check: removed dead "Convenience Store" (Green-only).
+- utility.userChoice(): try/except ValueError, bounds 1..len(options).
+- Event: added remaining_bank; buy/buy_failed use it; display uses it.
+- testBusinessCenterBotGivesLowestScore added; TODO test count 193.
+
+---
+
 ## Feature Arcs
 
 ### Rich Bot Design
@@ -35,9 +45,6 @@ Each step answers a plain-English question a bot needs to ask. Each step depends
   *"How much better off am I if I add this card to my deck?"*
   Captures factory synergies and UpgradeCard portfolio-diff. `score_purchase_options()` wraps
   this into a ranked `{Card: float}` dict for direct use in `chooseCard()`.
-  Radio Tower uses option-value math rather than portfolio-diff (portfolio-diff returns 0 because
-  no per-card `ev()` uses the flag): `E_with_RT = Σ_r P(r)×max(V(r), E_own)`; gain is zero for
-  flat decks and maximal for sparse high-variance decks — exactly the right incentive.
 
 - ✅ **BusinessCenter swap: argmax/argmin over `delta_ev()`** (`strategy.py`)
   *"Which card should I steal, and which should I give away?"*
@@ -45,12 +52,15 @@ Each step answers a plain-English question a bot needs to ask. Each step depends
   give away the least-harmful of owner's bottom-4 cards by EV — spite filter prevents handing
   the opponent a card that powers their engine. Give and take must be from the same opponent.
 
-- ✅ **`chooseCard()` via argmax(`delta_ev`)** (`strategy.EVBot`)
-  `EVBot(Bot)` ranks affordable cards by `delta_ev` via `score_purchase_options()`; falls back
-  to `random.choice` when no game context is available. `chooseCard` now receives `game` (not
-  `market`) across the whole player hierarchy — the right architecture for a family of EV-aware bots.
-  First tournament run: EVBot 43% vs random Bots (10 games); ThoughtfulBot baseline 87%.
-  Gap points to EV model calibration work ahead (Red card bank snapshots, N horizon).
+- **`chooseCard()` via argmax(`delta_ev`)**
+  *"Which card is the best purchase for me right now?"*
+  Replaces the static preference list in `Bot` and `ThoughtfulBot` with a principled ranking.
+  `score_purchase_options()` already produces the ranked dict; wire it into a new `EVBot` subclass.
+
+- **Wire EVBot into CLI (one pass)**
+  - Add `--evbot` (or similar) to argparse in `main()`.
+  - In `setPlayers()` or player setup from CLI args, when evbot requested, use `EVBot` instead of `Bot`/`ThoughtfulBot`.
+  - Ensure `chooseCard(options, game)` receives `game` so EVBot can call `score_purchase_options()`.
 
 Build a multi-dimensional card evaluation engine that scores cards across strategic dimensions:
 - Coverage (number of die results that trigger the card)
@@ -67,6 +77,10 @@ Strategy profiles can blend these dimensions with custom weights:
 - AggressiveBot (high spite + tempo)
 - EconomistBot (pure expected value maximization)
 - AdaptiveBot (shifts strategy based on game phase)
+
+A bot's strategy is also a composition of its different behaviors: 
+- How aggressively does it pursue landmarks? 
+- 
 
 ### Graphical User Interface
 **Native GUI using Pygame (or similar Python framework)**
@@ -106,16 +120,14 @@ Architecture:
 
 ### Meta-Game Features
 - Statistics tracking (win rates, average game length, card value analysis)
-- ✅ Tournament harness (`tournament.py`): BUE vs Bot sparring partners, 2/3/4-player brackets, win/loss report
-- Swiss Tournament mode: multi-bot ladder with persistent standings, Elo ratings,
-  turns-to-victory tracking, positional bias correction (randomise seat order),
-  thousands of games, bracket pairing by current rank.
+- Tournament mode (best of N games, ladder rankings)
 - Bot vs bot simulations for strategy testing
 - Export game logs for analysis
 
 ## Bugfix
 
 - Emoji don't correctly display in Windows terminals
+- (Card trigger order) If card resolution order is wrong (e.g. Red before Blue), Red could "steal off the top" after Blue paid. Verify `next_turn()` resolves in order: Red → Blue → Green → Purple; add a test that asserts this order.
 
 ## Tech Debt / Quality
 
@@ -225,12 +237,21 @@ Concrete implementations:
 #### Open Bugs / Tech Debt
 
 **Design / correctness**
-- **BusinessCenter.trigger** still calls `input()`/`print()` directly instead of events — not event-driven; invisible to non-terminal displays and harder to test
+- **BusinessCenter.trigger** still calls `input()`/`print()` directly for Human — not event-driven. Task: Implement `Human.chooseBusinessCenterSwap(target, my_swappable, their_swappable)` to do the prompts and return `(card_to_give, card_to_take)` or `None`; then in `BusinessCenter.trigger()` call `dieroller.chooseBusinessCenterSwap(...)` for every player type (remove the `isinstance(dieroller, Human)` branch that does input/print).
 
-**Deferred / already noted**
-- **Extract Shopping Mall logic to payout modifier system** — when card triggers restructured to receive Game
-- **Better use of dict() for card lookups** — once trigger logic is settled
-- **Performance benchmarks** — after Event system stabilizes
+**Small, one-step tasks (do in any order)**
+- **Store.freq() cache**: `append()` and `remove()` do not invalidate `self.frequencies`. Either (a) set `self.frequencies = {}` or `None` at the end of `append`/`remove`, or (b) add a one-line comment that callers must call `freq()` before reading `.frequencies`.
+- **Player.dieroll()**: For `chooseDice()` return values other than 1 or 2, the code returns `(7, False)`. Task: Replace with `raise ValueError("chooseDice() must return 1 or 2")` so bad subclasses fail fast.
+- **Game.get_player_state(player)**: Implement a method that returns a dict suitable for display, e.g. `{"name": player.name, "bank": player.bank, "landmarks": count, "cards": count}`. Used by GUI/LogDisplay.
+- **Game.get_market_state()**: Implement a method that returns available cards with quantities (e.g. list of (name, count) or dict). Used by GUI/LogDisplay.
+- **Display.show_state(game)**: Add `show_state(self, game: Game) -> None` to the Display ABC; implement no-op in NullDisplay and a simple print of player list + market in TerminalDisplay.
+
+**Deferred / later**
+- Extract Shopping Mall logic to payout modifier system (when card triggers restructured to receive Game).
+- Better use of dict() for card lookups (once trigger logic is settled).
+- Performance benchmarks (after Event system stabilizes).
+- **Optional file split**: Move Player/Human/Bot, Card hierarchy, Store hierarchy, Display, Game into separate modules (e.g. `players.py`, `cards.py`, `stores.py`, `display.py`, `game.py`) — only if maintenance becomes painful.
+- **Optional trigger dispatch**: Replace hardcoded `[Red, Blue, Green, Stadium, TVStation, BusinessCenter]` with a `Card.color` (or similar) and dispatch by color order so new card types don’t require editing `next_turn()`.
 
 ### Testing Strategy
 
@@ -239,4 +260,20 @@ Concrete implementations:
 - CircleCI measures coverage on every push — check CI rather than running pytest locally
 - Continue to run `ruff` to ensure our syntax is clear and Pythonic
 
-Current state: **179 tests**, ruff clean.
+Current state: **193 tests**, ruff clean.
+
+#### Tests to add (one per bullet — each gives diagnostic value)
+- **Stadium roller excluded**: In test_cards or test_integration, trigger Stadium with 2+ players and assert the die roller’s bank did not decrease (only other players paid).
+- **Red self-trigger skip**: When the roller owns a Cafe and rolls 3, assert no steal event is emitted (or roller bank unchanged). Prevents regression of Red firing on self.
+- **userChoice ValueError**: In test_utility, mock `input` to return `"abc"` then a valid number; assert no crash and that the valid choice is returned.
+- **userChoice out-of-range**: Mock `input` to return `0` or `-1` then a valid number; assert the second choice is returned (and no crash).
+- **Amusement Park bonus turn**: Integration test: one player has Amusement Park, roll doubles, assert they get a second turn (e.g. two "turn_start" or two roll events in one round).
+- **testCardInteractions**: Replace hardcoded 103/101 with values derived from `starting_bank + sum(payouts)` so the test doesn’t silently break if starting bank changes.
+- **BC swap purple (optional)**: Assert that a bot can swap a purple establishment (e.g. Stadium) via Business Center — documents that purples are swappable per rules.
+
+#### Tests that add little value (consider removing or replacing)
+- **testSingleTurnNoCrash** (test_game_flow): Only asserts `next_turn()` returns a list. Either remove or replace with an assertion that checks a concrete event type or state change.
+- **testBotChooseCardMocked** (test_bots): Only checks that `random.choice` was called. Consider removing or replacing with a test that asserts the returned value is in the options list.
+- **test_returns_bool** (test_tournament): Only checks `run_match()` return type. Consider removing.
+- **testHistoryStartsEmpty** (test_game): Only checks `Game.history == []`. Consider removing or folding into a larger "initial state" test.
+- **testUserChoiceFirstOption** / **testUserChoiceLastOption** (test_utility): Same code path as testUserChoiceValidFirst. Remove one or both to avoid redundancy.
