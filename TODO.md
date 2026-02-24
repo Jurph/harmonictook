@@ -2,70 +2,6 @@
 
 ## Feature Arcs
 
-### Rich Bot Design
-**Dynamic card-valuation framework to support flexible bot strategies**
-
-Expected value calculations:
-- Calculate the expected income from the current board state for the next N rounds (lets bots think "a little bit" ahead or "a lot" ahead)
-- Calculate other players' expected income from same
-- Calculate whether one or two dice yield better income against current board state
-- Calculate expected income from a specific card for the next N rounds
-- Estimate which player is "ahead" based on the expected income of their board for the next N rounds
-
-**EV infrastructure — implementation ladder**
-
-Each step answers a plain-English question a bot needs to ask. Each step depends on the one above it.
-
-- ✅ **Probability tables + `p_hits(hitsOn, num_dice) -> float`** (`strategy.py`)
-  *"How often do I expect a given card to hit?"*
-  Module-level constants: `ONE_DIE_PROB`, `TWO_DIE_PROB`, `P_DOUBLES = 1/6`.
-  Fundamental primitive — everything else is built on this.
-
-- ✅ **`ev(card, owner, players, N) -> float` per card color** (`strategy.py`)
-  *"What income should I expect this card to generate over the next N turns?"*
-  Blue ✅, Green ✅ (factory multipliers + Shopping Mall), Red ✅ (bounded by opponent bank),
-  Stadium ✅, Amusement Park turn multiplier ✅ (`× 1/(1 − P_DOUBLES)`).
-  TVStation ✅, BusinessCenter ✅ (optimal swap: delta_ev gain side, spite-filtered give side).
-
-- ✅ **`portfolio_ev(player, players, N) -> float`** (`strategy.py`)
-  *"What total income do I expect from my whole board over the next N turns?"*
-  Sum of `ev()` over the player's deck. Also the basis for estimating who is "ahead."
-
-- ✅ **`delta_ev(card, player, players, N) -> float`** (`strategy.py`)
-  *"How much better off am I if I add this card to my deck?"*
-  Captures factory synergies and UpgradeCard portfolio-diff. `score_purchase_options()` wraps
-  this into a ranked `{Card: float}` dict for direct use in `chooseCard()`.
-
-- ✅ **BusinessCenter swap: argmax/argmin over `delta_ev()`** (`strategy.py`)
-  *"Which card should I steal, and which should I give away?"*
-  Per opponent: take the card with highest `delta_ev` to owner (factory synergies included);
-  give away the least-harmful of owner's bottom-4 cards by EV — spite filter prevents handing
-  the opponent a card that powers their engine. Give and take must be from the same opponent.
-
-- ✅ **`chooseCard()` via argmax(delta_ev)** — EVBot in strategy.py uses score_purchase_options(); next_turn() passes game into chooseCard(options, self).
-
-- ✅ **EVBot is playable** — available via `setPlayers()` interactive menu ("Tough Bot (EV-ranked strategy)") and in `tournament.py`. Bot type is chosen in-game; no CLI flags needed.
-
-Build a multi-dimensional card evaluation engine that scores cards across strategic dimensions:
-- Coverage (number of die results that trigger the card)
-- Passivity (value on other players' turns, scaled by player count)
-- Expected Value (coins-per-turn with probability calculations)
-- Synergy (multiplier effects with existing portfolio)
-- Spite (hurting opponents / defensive value)
-- Tempo (cost/payout ratio, break-even analysis)
-- Monopoly Potential (cornering markets, blocking opponents)
-- Landmark Progress (raw income toward win condition)
-
-Strategy profiles can blend these dimensions with custom weights:
-- ConservativeBot (high coverage + passivity)
-- AggressiveBot (high spite + tempo)
-- EconomistBot (pure expected value maximization)
-- AdaptiveBot (shifts strategy based on game phase)
-
-A bot's strategy is also a composition of its different behaviors: 
-- How aggressively does it pursue landmarks? 
-- 
-
 ### Graphical User Interface
 **Native GUI using Pygame (or similar Python framework)**
 
@@ -132,7 +68,8 @@ finish_score = (sum of owned landmark costs) × 3
 Landmark costs: Train Station=4, Shopping Mall=10, Amusement Park=16,
 Radio Tower=22. The 3× multiplier rewards landmark investment over card
 investment over hoarding; the 25-point golden snitch ensures the winner
-always outranks a non-winner regardless of bank size.
+nearly always outranks a non-winner unless the non-winner has failed to
+seize the victory. 
 
 Starting cards (Wheat Field cost=1, Bakery cost=1) are counted at 2× since
 tracking "purchased vs given" would require new Player state; the rounding
@@ -152,11 +89,6 @@ result_i   = 1 if finish_score_i > finish_score_j else 0
 r_i_new    = r_i + K' * (result_i - expected_i)
 ```
 
-To avoid over-updating ratings from N-1 simultaneous pairings, scale the
-K-factor down: `K' = K / (N - 1)`. With K=32 and a 4-player table,
-`K' ≈ 10.7` per pair. This keeps per-game rating movement comparable to a
-2-player game regardless of table size.
-
 Initial rating: **1500** (chess standard). K-factor: **32** (fixed, no decay).
 Draws are exact ties only — losing by a single point is a loss.
 
@@ -175,7 +107,7 @@ of 12 with `Bot` instances labelled "RandomBot" so tables divide cleanly.
 | 4     | Seeded quads  | N/4     | Elo adjacency   | 3               |
 
 Each player faces exactly **7 distinct opponents** across the tournament
-(1 + 1 + 2 + 3). With 12 entrants, that is every other participant.
+(1 + 1 + 2 + 3). 
 
 **Seeded pairing rule:** sort all players by current Elo descending, then
 assign to tables in order (players 1–2, 3–4, etc. for pairs; 1–3, 4–6 for
@@ -184,47 +116,8 @@ triples; 1–4, 5–8 for quads). Within each table, **highest Elo sits last**
 that avoid repeating a round-1 opponent in round 2; skip if impossible.
 
 **Padding:** `Bot` fills spots up to the next multiple of 12. Padding bots
-receive Elo updates normally so they act as a calibrated floor. With 24+
-entrants, run two "days" of 4 rounds each (8 rounds total, 15 opponents).
+receive Elo updates normally so they act as a calibrated floor. 
 
-#### Data Structures
-
-```python
-@dataclass
-class TournamentPlayer:
-    player_factory: Callable[[str], Player]  # e.g. make_evbot(n=3)
-    label: str                               # display name
-    elo: float = 1500.0
-    opponents_faced: list[str] = field(default_factory=list)
-
-@dataclass
-class RoundResult:
-    table: list[str]        # player labels in finish order (1st → last)
-    finish_scores: dict[str, int]   # label → finish_score
-    elo_deltas: dict[str, float]    # label → Elo change this round
-```
-
-Note: `tournament_points` removed — Elo alone is the standing metric.
-
-#### Reporting
-
-After each round, print a standings table sorted by Elo descending:
-
-```
-  Rank  Player            Elo     Δ      Opponents faced
-  ----  ----------------  ------  -----  ---------------
-     1  EVBot(N=5)        1543.2  +14.1  RandomBot, EVBot(N=1)
-     2  CoverageBot       1521.0   +6.3  ThoughtfulBot, RandomBot
-     3  ThoughtfulBot     1488.4   -5.9  CoverageBot, EVBot(N=3)
-     4  EVBot(N=1)        1447.4  -14.5  EVBot(N=5), RandomBot
-```
-
-Optionally: color gradient (cyan → green → yellow → red) for visual ranking.
-
-#### Out of Scope (for now)
-- Seeded brackets / single-elimination
-- Human players in rated tournaments
-- Persistence of Elo ratings across separate tournament runs
 
 ## Bugfix
 
@@ -340,11 +233,6 @@ Concrete implementations:
 **Design / correctness**
 - **BusinessCenter.trigger** still calls `input()`/`print()` directly for Human — not event-driven. Task: Implement `Human.chooseBusinessCenterSwap(target, my_swappable, their_swappable)` to do the prompts and return `(card_to_give, card_to_take)` or `None`; then in `BusinessCenter.trigger()` call `dieroller.chooseBusinessCenterSwap(...)` for every player type (remove the `isinstance(dieroller, Human)` branch that does input/print).
 
-**Suspected dead code (verify then delete)**
-- ✅ `main()` CLI flag `-t/--test` (`dest='unittests'`) — removed (was parsed but never read).
-- ✅ Event type `"warn"` — removed from `EventType`, renderer branch, and unreachable else-branch in `refresh_market()` (nothing ever emitted it).
-- ✅ `specials.remove(card)` in `Player.buy()` — removed (modified a local list from `checkRemainingUpgrades()` that went out of scope immediately; `bestowPower()` does the real work).
-
 **Small, one-step tasks (do in any order)**
 - **Display.show_state(game)**: Add `show_state(self, game: Game) -> None` to the Display ABC; implement no-op in NullDisplay and a simple print of player list + market in TerminalDisplay.
 
@@ -365,13 +253,11 @@ Concrete implementations:
 - Continue to run `ruff` to ensure our syntax is clear and Pythonic
 
 #### Tests to add (one per bullet — each gives diagnostic value)
-- **userChoice ValueError**: In test_utility, mock `input` to return `"abc"` then a valid number; assert no crash and that the valid choice is returned.
-- **userChoice out-of-range**: Mock `input` to return `0` or `-1` then a valid number; assert the second choice is returned (and no crash).
-- **Amusement Park bonus turn**: Integration test: one player has Amusement Park, roll doubles, assert they get a second turn (e.g. two "turn_start" or two roll events in one round).
-- **testCardInteractions**: Replace hardcoded 103/101 with values derived from `starting_bank + sum(payouts)` so the test doesn’t silently break if starting bank changes.
-- **BC swap purple (optional)**: Assert that a bot can swap a purple establishment (e.g. Stadium) via Business Center — documents that purples are swappable per rules.
+
+- TBD 
 
 #### Tests that add little value (consider removing or replacing)
+
 - **testSingleTurnNoCrash** (test_game_flow): Only asserts `next_turn()` returns a list. Either remove or replace with an assertion that checks a concrete event type or state change.
 - **testBotChooseCardMocked** (test_bots): Only checks that `random.choice` was called. Consider removing or replacing with a test that asserts the returned value is in the options list.
 - **test_returns_bool** (test_tournament): Only checks `run_match()` return type. Consider removing.
