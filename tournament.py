@@ -14,10 +14,31 @@ from __future__ import annotations
 
 import argparse
 import random
+from dataclasses import dataclass, field
 from typing import Callable
 
-from harmonictook import Game, NullDisplay, Player, PlayerDeck, UpgradeCard
+from harmonictook import Bot, Game, NullDisplay, Player, PlayerDeck, UpgradeCard
 from bots import EVBot, ThoughtfulBot, CoverageBot  # noqa: F401 (ThoughtfulBot/CoverageBot re-exported for callers)
+
+
+_ELO_K: float = 32.0
+
+
+@dataclass
+class TournamentPlayer:
+    """Persistent entry in a Swiss tournament."""
+    label: str
+    player_factory: Callable[[str], Player]
+    elo: float = field(default=1500.0)
+    opponents_faced: list[str] = field(default_factory=list)
+
+
+@dataclass
+class RoundResult:
+    """Result of one table within a tournament round."""
+    table: list[str]               # labels in finish order (highest score first)
+    finish_scores: dict[str, int]  # label → finish_score
+    elo_deltas: dict[str, float]   # label → Elo change from this table
 
 
 def finish_score(player: Player) -> int:
@@ -138,17 +159,213 @@ def print_report(bue_name: str, results: dict[int, tuple[int, int]]) -> None:
     print(f"  Overall:   {total_wins}W / {total_games - total_wins}L  ({total_pct:.1f}%)\n")
 
 
+def _run_table(players: list[TournamentPlayer]) -> RoundResult:
+    """Run one game; update Elo and opponents_faced in place; return the round result."""
+    n = len(players)
+    k_prime = _ELO_K / (n - 1)
+
+    game = Game(players=n)
+    instances: dict[str, Player] = {}
+    for i, tp in enumerate(players):
+        p = tp.player_factory(tp.label)
+        p.deck = PlayerDeck(p)
+        game.players[i] = p
+        instances[tp.label] = p
+    game.run(display=NullDisplay())
+
+    scores: dict[str, int] = {tp.label: finish_score(instances[tp.label]) for tp in players}
+
+    # Accumulate Elo deltas using pre-game ratings (all pairs computed against initial Elo)
+    deltas: dict[str, float] = {tp.label: 0.0 for tp in players}
+    for i in range(n):
+        for j in range(i + 1, n):
+            a, b = players[i], players[j]
+            sa, sb = scores[a.label], scores[b.label]
+            result_a = 1.0 if sa > sb else (0.5 if sa == sb else 0.0)
+            result_b = 1.0 - result_a
+            expected_a = 1.0 / (1.0 + 10 ** ((b.elo - a.elo) / 400))
+            expected_b = 1.0 - expected_a
+            deltas[a.label] += k_prime * (result_a - expected_a)
+            deltas[b.label] += k_prime * (result_b - expected_b)
+
+    for tp in players:
+        tp.elo += deltas[tp.label]
+        tp.opponents_faced.extend(o.label for o in players if o.label != tp.label)
+
+    finish_order = sorted(players, key=lambda tp: -scores[tp.label])
+    return RoundResult(
+        table=[tp.label for tp in finish_order],
+        finish_scores=scores,
+        elo_deltas=deltas,
+    )
+
+
+def _seeded_tables(players: list[TournamentPlayer], table_size: int) -> list[list[TournamentPlayer]]:
+    """Sort players by Elo descending, group into tables; highest-Elo player sits last."""
+    by_elo = sorted(players, key=lambda tp: -tp.elo)
+    tables = []
+    for i in range(0, len(by_elo), table_size):
+        group = by_elo[i:i + table_size]
+        tables.append(list(reversed(group)))  # highest Elo → last turn order
+    return tables
+
+
+def _avoid_pair_repeats(
+    tables: list[list[TournamentPlayer]],
+    recent: dict[str, set[str]],
+) -> list[list[TournamentPlayer]]:
+    """Best-effort: swap players between adjacent pair tables to avoid same-day rematches.
+
+    recent maps each player label to the set of labels they played in this day's round 1.
+    """
+    for i in range(len(tables) - 1):
+        a, b = tables[i]
+        if b.label in recent.get(a.label, set()):
+            c, d = tables[i + 1]
+            if (c.label not in recent.get(a.label, set())
+                    and d.label not in recent.get(b.label, set())):
+                tables[i] = [a, c]
+                tables[i + 1] = [b, d]
+    return tables
+
+
+def print_standings(players: list[TournamentPlayer], after_round: int) -> None:
+    """Print standings table sorted by Elo descending."""
+    sorted_players = sorted(players, key=lambda tp: -tp.elo)
+    print(f"\n  Standings after Round {after_round}:")
+    print(f"  {'Rank':>4}  {'Player':<14}  {'Elo':>7}  Opponents faced")
+    print(f"  {'----':>4}  {'-' * 14}  {'-------':>7}  ---------------")
+    for rank, tp in enumerate(sorted_players, 1):
+        opp_str = ", ".join(tp.opponents_faced) if tp.opponents_faced else "-"
+        print(f"  {rank:>4}  {tp.label:<14}  {tp.elo:>7.1f}  {opp_str}")
+    print()
+
+
+def run_swiss_tournament(
+    entries: list[TournamentPlayer],
+    n_days: int = 1,
+    verbose: bool = True,
+) -> list[TournamentPlayer]:
+    """Run n_days x 4-round Swiss tournament; return players sorted by final Elo.
+
+    Each day's rounds:
+      1 — Random pairs (day 1) or seeded pairs (subsequent days)
+      2 — Seeded pairs (avoid same-day round-1 rematches where possible)
+      3 — Seeded triples
+      4 — Seeded quads
+
+    Field is padded to a multiple of 12 with Bot fillers if needed.
+    All Elo and opponents_faced state is mutated in place on each TournamentPlayer.
+    """
+    filler_n = 0
+    while len(entries) % 12 != 0:
+        filler_n += 1
+        entries.append(TournamentPlayer(label=f"Random{filler_n}", player_factory=Bot))
+
+    total_rounds = 0
+
+    def _print_round(rn: int, fmt: str, results: list[RoundResult]) -> None:
+        print(f"\n{'=' * 56}")
+        print(f"  Round {rn}: {fmt}")
+        print(f"{'=' * 56}")
+        for r in results:
+            finish_str = "  ".join(f"{lbl}({r.finish_scores[lbl]})" for lbl in r.table)
+            delta_str = "  ".join(f"{lbl}({r.elo_deltas[lbl]:+.1f})" for lbl in r.table)
+            print(f"  Finish: {finish_str}")
+            print(f"  Elo d:  {delta_str}")
+
+    for day in range(1, n_days + 1):
+        if verbose and n_days > 1:
+            print(f"\n{'#' * 56}")
+            print(f"  Day {day} of {n_days}")
+            print(f"{'#' * 56}")
+
+        # Round 1 — random on day 1, seeded thereafter
+        if day == 1:
+            shuffled = list(entries)
+            random.shuffle(shuffled)
+            r1_tables = [shuffled[i:i + 2] for i in range(0, len(shuffled), 2)]
+        else:
+            r1_tables = _seeded_tables(entries, 2)
+        r1_results = [_run_table(t) for t in r1_tables]
+        total_rounds += 1
+
+        # Build same-day round-1 opponent map for deconflict in round 2
+        recent: dict[str, set[str]] = {}
+        for table in r1_tables:
+            for tp in table:
+                recent[tp.label] = {o.label for o in table if o.label != tp.label}
+
+        if verbose:
+            fmt1 = "Random pairs" if day == 1 else "Seeded pairs"
+            _print_round(total_rounds, fmt1, r1_results)
+            print_standings(entries, total_rounds)
+
+        # Round 2 — seeded pairs, avoid same-day round-1 rematches
+        r2_tables = _seeded_tables(entries, 2)
+        r2_tables = _avoid_pair_repeats(r2_tables, recent)
+        r2_results = [_run_table(t) for t in r2_tables]
+        total_rounds += 1
+        if verbose:
+            _print_round(total_rounds, "Seeded pairs", r2_results)
+            print_standings(entries, total_rounds)
+
+        # Round 3 — seeded triples
+        r3_tables = _seeded_tables(entries, 3)
+        r3_results = [_run_table(t) for t in r3_tables]
+        total_rounds += 1
+        if verbose:
+            _print_round(total_rounds, "Seeded triples", r3_results)
+            print_standings(entries, total_rounds)
+
+        # Round 4 — seeded quads
+        r4_tables = _seeded_tables(entries, 4)
+        r4_results = [_run_table(t) for t in r4_tables]
+        total_rounds += 1
+        if verbose:
+            _print_round(total_rounds, "Seeded quads", r4_results)
+            print_standings(entries, total_rounds)
+
+    return sorted(entries, key=lambda tp: -tp.elo)
+
+
+def _default_swiss_field() -> list[TournamentPlayer]:
+    """12-player field: 3 of each bot type with naming convention R/T/E/C."""
+    ev3 = make_evbot(3)
+    return [
+        TournamentPlayer(label="Robbie", player_factory=Bot),
+        TournamentPlayer(label="Rascal", player_factory=Bot),
+        TournamentPlayer(label="Rebeka", player_factory=Bot),
+        TournamentPlayer(label="Tex",    player_factory=ThoughtfulBot),
+        TournamentPlayer(label="Tim",    player_factory=ThoughtfulBot),
+        TournamentPlayer(label="Tay",    player_factory=ThoughtfulBot),
+        TournamentPlayer(label="Edgar",  player_factory=ev3),
+        TournamentPlayer(label="Ellen",  player_factory=ev3),
+        TournamentPlayer(label="Elija",  player_factory=ev3),
+        TournamentPlayer(label="Chadd",  player_factory=CoverageBot),
+        TournamentPlayer(label="Carli",  player_factory=CoverageBot),
+        TournamentPlayer(label="Carol",  player_factory=CoverageBot),
+    ]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Headless bot tournament")
     parser.add_argument("--games", type=int, default=5, metavar="N",
                         help="games per bracket / round-robin (default: 5; recommend 100+ for round-robin)")
     parser.add_argument("--round-robin", action="store_true",
                         help="run N-horizon shootout instead of BUE vs Bot sparring")
+    parser.add_argument("--swiss", action="store_true",
+                        help="run Swiss tournament with 12 named bots (3 of each type)")
+    parser.add_argument("--days", type=int, default=1, metavar="N",
+                        help="number of 4-round days in the Swiss tournament (default: 1)")
     parser.add_argument("--horizons", type=int, nargs="+", default=[1, 3, 5, 7],
                         metavar="N", help="EV horizons to compare in round-robin (default: 1 3 5 7)")
     args = parser.parse_args()
 
-    if args.round_robin:
+    if args.swiss:
+        entries = _default_swiss_field()
+        run_swiss_tournament(entries, n_days=args.days)
+    elif args.round_robin:
         named_factories = [(f"EVBot(N={n})", make_evbot(n)) for n in args.horizons]
         results = run_round_robin(named_factories, n_games=args.games)
         print_round_robin_report(results, n_games=args.games)
