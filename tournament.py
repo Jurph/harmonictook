@@ -30,7 +30,7 @@ class TournamentPlayer:
     label: str
     player_factory: Callable[[str], Player]
     elo: float = field(default=1500.0)
-    opponents_faced: list[str] = field(default_factory=list)
+    scores: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -160,7 +160,7 @@ def print_report(bue_name: str, results: dict[int, tuple[int, int]]) -> None:
 
 
 def _run_table(players: list[TournamentPlayer]) -> RoundResult:
-    """Run one game; update Elo and opponents_faced in place; return the round result."""
+    """Run one game; update Elo and scores in place; return the round result."""
     n = len(players)
     k_prime = _ELO_K / (n - 1)
 
@@ -190,7 +190,7 @@ def _run_table(players: list[TournamentPlayer]) -> RoundResult:
 
     for tp in players:
         tp.elo += deltas[tp.label]
-        tp.opponents_faced.extend(o.label for o in players if o.label != tp.label)
+        tp.scores.append(scores[tp.label])
 
     finish_order = sorted(players, key=lambda tp: -scores[tp.label])
     return RoundResult(
@@ -233,11 +233,11 @@ def print_standings(players: list[TournamentPlayer], after_round: int) -> None:
     """Print standings table sorted by Elo descending."""
     sorted_players = sorted(players, key=lambda tp: -tp.elo)
     print(f"\n  Standings after Round {after_round}:")
-    print(f"  {'Rank':>4}  {'Player':<14}  {'Elo':>7}  Opponents faced")
-    print(f"  {'----':>4}  {'-' * 14}  {'-------':>7}  ---------------")
+    print(f"  {'Rank':>4}  {'Player':<14}  {'Elo':>7}  {'Avg score':>9}")
+    print(f"  {'----':>4}  {'-' * 14}  {'-------':>7}  {'---------':>9}")
     for rank, tp in enumerate(sorted_players, 1):
-        opp_str = ", ".join(tp.opponents_faced) if tp.opponents_faced else "-"
-        print(f"  {rank:>4}  {tp.label:<14}  {tp.elo:>7.1f}  {opp_str}")
+        avg = sum(tp.scores) / len(tp.scores) if tp.scores else 0.0
+        print(f"  {rank:>4}  {tp.label:<14}  {tp.elo:>7.1f}  {avg:>9.1f}")
     print()
 
 
@@ -255,7 +255,7 @@ def run_swiss_tournament(
       4 — Seeded quads
 
     Field is padded to a multiple of 12 with Bot fillers if needed.
-    All Elo and opponents_faced state is mutated in place on each TournamentPlayer.
+    All Elo and scores state is mutated in place on each TournamentPlayer.
     """
     filler_n = 0
     while len(entries) % 12 != 0:
