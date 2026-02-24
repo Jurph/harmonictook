@@ -4,9 +4,8 @@
 # Pure functions only: no side effects, no I/O. Returns scores; callers decide how to act.
 
 from __future__ import annotations
-import random
 import statistics
-from harmonictook import Blue, Green, Red, Stadium, TVStation, BusinessCenter, Player, Bot, Game, Card, UpgradeCard  # noqa: F401 (UpgradeCard used in ev dispatch TODO)
+from harmonictook import Blue, Green, Red, Stadium, TVStation, BusinessCenter, Player, Game, Card, UpgradeCard  # noqa: F401 (UpgradeCard used in ev dispatch TODO)
 
 # ---------------------------------------------------------------------------
 # Probability tables
@@ -41,6 +40,26 @@ def _turn_multiplier(player: Player) -> float:
 def _count_category(player: Player, category: int) -> int:
     """Return the count of cards in player's deck with the given category."""
     return sum(1 for c in player.deck.deck if getattr(c, "category", None) == category)
+
+
+def _own_turn_coverage(player: Player, num_dice: int) -> float:
+    """Return P(at least one card fires when player rolls num_dice dice on their own turn).
+
+    This is NOT per-round coverage — it only evaluates the player's own roll.
+    It is used exclusively by chooseDice(), which controls only the player's own
+    roll distribution. Red cards are excluded because they fire on opponents' rolls
+    and are unaffected by this player's dice choice. For full per-round coverage
+    (including Red card income from opponents' turns), use portfolio_coverage().
+
+    Die values where multiple cards overlap are counted once (coverage, not income count).
+    """
+    prob_table = ONE_DIE_PROB if num_dice == 1 else TWO_DIE_PROB
+    own_turn_cards = [c for c in player.deck.deck if not isinstance(c, (Red, UpgradeCard))]
+    return sum(
+        prob
+        for die_value, prob in prob_table.items()
+        if any(die_value in card.hitsOn for card in own_turn_cards)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +305,93 @@ def portfolio_ev(player: Player, players: list[Player], N: int = 1) -> float:
     return sum(ev(card, player, players, N) for card in player.deck.deck)
 
 
+def coverage_value(card: Card, owner: Player, players: list[Player]) -> float:
+    """Return the expected number of times card fires per round.
+
+    A 'round' is one full cycle: every player takes one turn, weighted by each
+    player's turn multiplier (Amusement Park extra turns from doubles).
+
+    - Blue:   fires on every player's roll → scales with player count
+    - Red:    fires on each other player's roll → scales with opponent count
+    - Green / Purple (Stadium, TVStation, BusinessCenter): fires only on the
+              owner's roll → independent of player count
+    - UpgradeCard: 0.0 (not triggered by dice)
+
+    In a 2-player game a Blue and a Green card with identical hitsOn and no
+    Train Stations have equal coverage (1 own turn, 1 opponent turn).
+    In a 4-player game the same Blue card fires on 4 turns vs the Green's 1,
+    so coverage skews toward cards that trigger on opponents' rolls.
+    """
+    if isinstance(card, UpgradeCard):
+        return 0.0
+    if isinstance(card, Blue):
+        return sum(p_hits(card.hitsOn, _num_dice(p)) * _turn_multiplier(p) for p in players)
+    if isinstance(card, Red):
+        return sum(
+            p_hits(card.hitsOn, _num_dice(p)) * _turn_multiplier(p)
+            for p in players if p is not owner
+        )
+    # Green, Stadium, TVStation, BusinessCenter: fires only on the owner's roll
+    return p_hits(card.hitsOn, _num_dice(owner)) * _turn_multiplier(owner)
+
+
+def portfolio_coverage(player: Player, players: list[Player]) -> float:
+    """Return the expected number of income events per round across the player's whole deck."""
+    return sum(coverage_value(card, player, players) for card in player.deck.deck)
+
+
+def _card_fires_on(card: Card, owner: Player, roller: Player, die_value: int) -> bool:
+    """Return True if card fires when roller rolls die_value."""
+    if isinstance(card, UpgradeCard) or die_value not in card.hitsOn:
+        return False
+    if isinstance(card, Blue):
+        return True
+    if isinstance(card, Red):
+        return roller is not owner
+    # Green, Stadium, TVStation, BusinessCenter: owner's roll only
+    return roller is owner
+
+
+def _deck_fires_on(owner: Player, roller: Player, die_value: int) -> bool:
+    """Return True if any card in owner's deck fires when roller rolls die_value."""
+    return any(_card_fires_on(c, owner, roller, die_value) for c in owner.deck.deck)
+
+
+def delta_coverage(card: Card, owner: Player, players: list[Player]) -> float:
+    """Return the marginal coverage gained by adding card to owner's deck.
+
+    Unlike coverage_value (which counts expected fires regardless of existing deck),
+    delta_coverage only counts fires on (roller, die_value) pairs not already covered
+    by the owner's current deck. A second Wheat Field on an already-covered die value
+    contributes 0.0; a Ranch (Blue, [2]) partially overlaps a Bakery (Green, [2,3])
+    because it covers opponents rolling 2, which the Bakery doesn't.
+
+    UpgradeCards with coverage effects:
+      Train Station:  unlocks 2-die rolls → cov_2 - cov_1 on owner's turn.
+      Radio Tower:    re-roll on miss → (1 - cov) * cov additional hits per turn.
+      Amusement Park: bonus turn on doubles → P_DOUBLES * cov additional hits per turn.
+      Shopping Mall:  payout multiplier only; zero coverage effect.
+    """
+    if isinstance(card, UpgradeCard):
+        if card.name == "Train Station":
+            return _own_turn_coverage(owner, 2) - _own_turn_coverage(owner, 1)
+        if card.name == "Radio Tower":
+            cov = _own_turn_coverage(owner, _num_dice(owner))
+            return (1.0 - cov) * cov
+        if card.name == "Amusement Park":
+            cov = _own_turn_coverage(owner, _num_dice(owner))
+            return P_DOUBLES * cov
+        return 0.0  # Shopping Mall: pure payout multiplier, no coverage effect
+    total = 0.0
+    for roller in players:
+        prob_table = ONE_DIE_PROB if _num_dice(roller) == 1 else TWO_DIE_PROB
+        turn_mult = _turn_multiplier(roller)
+        for die_value, prob in prob_table.items():
+            if _card_fires_on(card, owner, roller, die_value) and not _deck_fires_on(owner, roller, die_value):
+                total += prob * turn_mult
+    return total
+
+
 def delta_ev(
     card: Card, player: Player, players: list[Player],
     N: int = 1, market_cards: list[Card] | None = None
@@ -316,49 +422,19 @@ def delta_ev(
     return direct + synergy
 
 
-def score_purchase_options(player: Player, game: Game, N: int = 1) -> dict[Card, float]:
-    """Return a {Card: delta_ev} dict for all cards the player can currently afford, sorted descending.
+def score_purchase_options(player: Player, cards: list[Card], players: list[Player], N: int = 1) -> dict[Card, float]:
+    """Return a {Card: delta_ev} dict for cards, sorted descending by delta_ev.
 
-    Calls game.get_purchase_options() then resolves each name to a Card in game.market.deck.
+    cards should be pre-filtered to distinct, affordable options.
+    players is passed to delta_ev for opponent-count-sensitive EV (Red, Blue, Purple cards).
     """
-    options = game.get_purchase_options()
-    if not options:
+    if not cards:
         return {}
-    seen: set[str] = set()
-    cards: list[Card] = []
-    for c in game.market.deck:
-        if c.name in options and c.name not in seen:
-            seen.add(c.name)
-            cards.append(c)
     scored = [
-        (card, delta_ev(card, player, game.players, N, market_cards=game.market.deck))
+        (card, delta_ev(card, player, players, N, market_cards=cards))
         for card in cards
     ]
     scored.sort(key=lambda pair: pair[1], reverse=True)
     return dict(scored)
 
 
-class EVBot(Bot):
-    """Bot that ranks purchase options by delta_ev and buys the highest-scoring card.
-
-    n_horizon controls the N-round planning horizon passed to score_purchase_options.
-    Inherits Bot.chooseAction (buy if affordable) and Bot.chooseDice/chooseReroll.
-    chooseCard uses score_purchase_options; falls back to random.choice if game is
-    unavailable or no scored card appears in options.
-    """
-
-    def __init__(self, name: str = "EVBot", n_horizon: int = 1) -> None:
-        super().__init__(name=name)
-        self.n_horizon = n_horizon
-
-    def chooseCard(self, options: list, game: Game | None = None) -> str | None:
-        """Return the name of the highest delta_ev card available in options."""
-        if not options:
-            return None
-        if game is None:
-            raise ValueError("EVBot.chooseCard requires a Game instance")
-        scored = score_purchase_options(self, game, N=self.n_horizon)
-        for card in scored:
-            if card.name in options:
-                return card.name
-        return random.choice(options)

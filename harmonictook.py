@@ -20,7 +20,7 @@ EventType = Literal[
     "steal", "steal_activate", "steal_target", "steal_no_target", "steal_skip",
     "collect", "bc_activate", "bc_bot_payout", "bc_swap", "bc_no_cards", "bc_no_target", "bc_skip",
     "bank_status", "deck_state", "buy", "buy_failed", "buy_not_found",
-    "pass", "win", "doubles_bonus", "warn",
+    "pass", "win", "doubles_bonus",
 ]
 
 
@@ -74,10 +74,10 @@ class Player(object):
         """Return True if the player holds all four upgrade cards."""
         return self.hasAmusementPark and self.hasRadioTower and self.hasShoppingMall and self.hasTrainStation
 
-    def dieroll(self) -> tuple[int, bool]:
+    def dieroll(self, players: list | None = None) -> tuple[int, bool]:
         """Roll dice as determined by chooseDice(); return (total, isDoubles)."""
         isDoubles = False
-        dice = self.chooseDice()
+        dice = self.chooseDice(players)
         if dice == 1:
             return random.randint(1,6), False
         elif dice == 2:
@@ -92,11 +92,11 @@ class Player(object):
         else:
             raise ValueError(f"chooseDice() must return 1 or 2, got {dice}")
 
-    def chooseDice(self) -> int:
-        """Return the number of dice to roll; base implementation always returns 1."""
-        return 1
+    def chooseDice(self, players: list | None = None) -> int:
+        """Return 2 if Train Station is owned, otherwise 1."""
+        return 2 if self.hasTrainStation else 1
 
-    def chooseReroll(self) -> bool:
+    def chooseReroll(self, last_roll: int | None = None) -> bool:
         """Return True if the player wants to use the Radio Tower to re-roll; base always returns False."""
         return False
 
@@ -163,7 +163,6 @@ class Player(object):
         if isinstance(card, (Red, Green, Blue, TVStation, Stadium, BusinessCenter)):
             availableCards.deck.remove(card)
         elif isinstance(card, UpgradeCard):
-            specials.remove(card)
             card.bestowPower()
         else:
             events.append(Event(type="buy_not_found", card=name))
@@ -204,22 +203,23 @@ class Human(Player):
                 return 'pass'
             elif 's' in action:
                 print("\n-=-= Available Cards =-=-")
-                print_deck(availableCards)
+                print(deck_to_string(availableCards))
                 continue
             else:
                 print("Please enter B, P, or S.")
 
     def chooseCard(self, options: list, game: Game | None = None) -> str | None:
         """Prompt the human to pick a card; shows a rich table when game is supplied."""
-        if len(options) == 0:
+        if not options:
             print("Oh no - no valid purchase options this turn.")
             return None
+        names = [o.name if isinstance(o, Card) else o for o in options]
         if game is not None:
-            cards = [next(c for c in game.market.deck if c.name == name) for name in options]
+            cards = [next(c for c in game.market.deck if c.name == name) for name in names]
             return utility.card_menu(cards)
-        return utility.userChoice(options)
+        return utility.userChoice(names)
 
-    def chooseDice(self) -> int:
+    def chooseDice(self, players: list | None = None) -> int:
         """Prompt the human (if they own Train Station) to choose 1 or 2 dice; default is 1."""
         dice = 1
         if self.hasTrainStation:
@@ -234,7 +234,7 @@ class Human(Player):
                     print("Sorry: please enter 1 or 2.")
         return dice
 
-    def chooseReroll(self) -> bool:
+    def chooseReroll(self, last_roll: int | None = None) -> bool:
         """Prompt the human to use the Radio Tower re-roll if they own it; returns their decision."""
         if self.hasRadioTower:
             choice = input("Use Radio Tower to re-roll? ([Y]es / [N]o) ")
@@ -273,81 +273,46 @@ class Bot(Player):
 
     def chooseCard(self, options: list, game: Game | None = None) -> str | None:
         """Return a randomly selected card name from options, or None if the list is empty."""
-        if len(options) == 0:
+        if not options:
             return None
-        return random.choice(options)
+        names = [o.name if isinstance(o, Card) else o for o in options]
+        return random.choice(names)
 
-    def chooseDice(self) -> int:
+    def chooseDice(self, players: list | None = None) -> int:
         """Return 2 if the bot owns Train Station, otherwise 1."""
-        if self.hasTrainStation:
-            return 2
-        else:
-            return 1
+        return 2 if self.hasTrainStation else 1
 
-    def chooseReroll(self) -> bool:
+    def chooseReroll(self, last_roll: int | None = None) -> bool:
         """Return True if the bot owns Radio Tower and the last roll was below 5."""
-        # Simple bot: re-roll if result is 1-4
-        if self.hasRadioTower and hasattr(self, '_last_roll'):
-            return self._last_roll < 5
-        return False
+        return self.hasRadioTower and last_roll is not None and last_roll < 5
+
+    def chooseTarget(self, players: list[Player]) -> Player | None:
+        """Return the non-rolling player with the most coins, or None if no valid targets."""
+        valid_targets = [p for p in players if not p.isrollingdice]
+        if not valid_targets:
+            return None
+        return max(valid_targets, key=lambda p: p.bank)
 
     def chooseBusinessCenterSwap(
         self, target: Player, my_swappable: list, their_swappable: list
     ) -> tuple[Card, Card] | None:
         """Choose which card to give and which to take when activating Business Center.
-        Bot default: take the highest-cost card from target; give the card with lowest
-        (sum of hitsOn + cost). Returns (card_to_give, card_to_take) or None to decline."""
+
+        Take: delegates to chooseCard() so steal preference is consistent with buy preference.
+        Give: the card with the lowest (sum of hitsOn + cost) — least valuable to keep.
+        Returns (card_to_give, card_to_take) or None to decline.
+        """
         if not my_swappable or not their_swappable:
             return None
-        card_to_take = max(their_swappable, key=lambda c: c.cost)
+        steal_name = self.chooseCard(their_swappable)
+        if steal_name is None:
+            return None
+        card_to_take = next(c for c in their_swappable if c.name == steal_name)
         card_to_give = min(
             my_swappable,
             key=lambda c: sum(getattr(c, "hitsOn", [0])) + getattr(c, "cost", 0),
         )
         return (card_to_give, card_to_take)
-
-class ThoughtfulBot(Bot):
-    """Priority-driven bot that follows a fixed card-preference ordering."""
-
-    def chooseCard(self, options: list, game: Game | None = None) -> str | None:
-        """Return the highest-priority card name available in options per the bot's preference list."""
-        if len(options) == 0:
-            return None
-        else:
-            upgrades = ["Radio Tower",
-            "Amusement Park",
-            "Shopping Mall",
-            "Train Station"]
-            earlycards = ["TV Station",
-            "Business Center",
-            "Stadium",
-            "Forest",
-            "Convenience Store",
-            "Ranch",
-            "Wheat Field",
-            "Cafe",
-            "Bakery"]
-            latecards = ["Mine",
-            "Furniture Factory",
-            "Cheese Factory",
-            "Family Restaurant",
-            "Apple Orchard",
-            "Fruit & Vegetable Market"]
-            if self.hasTrainStation:
-                preferences = upgrades + latecards + earlycards
-            else:
-                preferences = upgrades + earlycards
-            for priority in preferences:
-                if priority in options:
-                    return priority
-            return random.choice(options)
-
-    def chooseDice(self) -> int:
-        """Return 1 without Train Station; with it, randomly favour 2 dice (4:1 odds)."""
-        if not self.hasTrainStation:
-            return 1
-        else:
-            return random.choice([1,2,2,2,2])
 
 
 def get_die_roller(players: list[Player]) -> Player:
@@ -779,6 +744,10 @@ class UniqueDeck(Store):
 # ==== Define top-level game functions ====
 def setPlayers(players: int | None = None, bots: int = 0, humans: int = 0) -> list[Player]:
     """Build and return the player list from explicit counts, an integer, or interactive prompts."""
+    # Lazy import — bots.py imports harmonictook (for Bot, Player, etc.) and strategy
+    # (for EV functions), so importing at module level would create a circular dependency.
+    # By the time setPlayers() is called the module is fully loaded and this resolves cleanly.
+    from bots import ThoughtfulBot, EVBot, CoverageBot  # noqa: PLC0415
     playerlist = []
     if bots > 0 or humans > 0:
         total = bots + humans
@@ -794,14 +763,11 @@ def setPlayers(players: int | None = None, bots: int = 0, humans: int = 0) -> li
             playerlist.append(ThoughtfulBot(name=f"Robo{i}"))
         return playerlist
     elif players is None:
-        # Lazy import — strategy.py imports harmonictook, so importing at module level
-        # would create a circular dependency. By the time setPlayers() is called the
-        # module is fully loaded and this import resolves cleanly.
-        from strategy import EVBot  # noqa: PLC0415
         _PLAYER_OPTIONS = [
             "Human",
             "Tough Bot (EV-ranked strategy)",
             "Medium Bot (heuristic preferences)",
+            "Coverage Bot (coverage-maximising strategy)",
             "Trivial Bot (random choices)",
             "Pick a bot for me",
         ]
@@ -817,10 +783,12 @@ def setPlayers(players: int | None = None, bots: int = 0, humans: int = 0) -> li
                     playerlist.append(EVBot(name=str(playername)))
                 elif choice == "Medium Bot (heuristic preferences)":
                     playerlist.append(ThoughtfulBot(name=str(playername)))
+                elif choice == "Coverage Bot (coverage-maximising strategy)":
+                    playerlist.append(CoverageBot(name=str(playername)))
                 elif choice == "Trivial Bot (random choices)":
                     playerlist.append(Bot(name=str(playername)))
                 else:  # "Pick a bot for me"
-                    playerlist.append(random.choice([EVBot, ThoughtfulBot, Bot])(name=str(playername)))
+                    playerlist.append(random.choice([EVBot, ThoughtfulBot, CoverageBot, Bot])(name=str(playername)))
             if len(playerlist) == 4:
                 break
             elif len(playerlist) >= 2:
@@ -857,10 +825,6 @@ def deck_to_string(deckObject: Store) -> str:
         rowstring += f"{quantity}\n"
     return rowstring
 
-
-def print_deck(deckObject: Store) -> None:
-    """Print a formatted frequency table for the given Store's cards."""
-    print(deck_to_string(deckObject))
 
 class Display(ABC):
     """Abstract base class for all game renderers."""
@@ -934,8 +898,6 @@ class TerminalDisplay(Display):
             print(f"{event.player} wins!")
         elif t == "doubles_bonus":
             print(f"{event.player} rolled doubles and gets to go again!")
-        elif t == "warn":
-            print(event.message)
 
 
 class NullDisplay(Display):
@@ -967,6 +929,29 @@ class Game:
         """Return card names in the market affordable by the current player."""
         return self.market.names(maxcost=self.get_current_player().bank)
 
+    def get_player_state(self, player: Player) -> dict:
+        """Return a display-friendly dict for one player: name, bank, landmarks count, cards count."""
+        landmarks = sum([
+            player.hasTrainStation,
+            player.hasShoppingMall,
+            player.hasAmusementPark,
+            player.hasRadioTower,
+        ])
+        cards = sum(1 for c in player.deck.deck if not isinstance(c, UpgradeCard))
+        return {
+            "name": player.name,
+            "bank": player.bank,
+            "landmarks": landmarks,
+            "cards": cards,
+        }
+
+    def get_market_state(self) -> dict[str, int]:
+        """Return available cards in the market as name -> quantity."""
+        counts: dict[str, int] = {}
+        for card in self.market.deck:
+            counts[card.name] = counts.get(card.name, 0) + 1
+        return counts
+
     def refresh_market(self) -> None:
         """Sync unique cards between reserve and market based on the current player's holdings."""
         player = self.get_current_player()
@@ -981,8 +966,6 @@ class Game:
                 self.reserve.append(card)
             elif (card.name in player.deck.names()) and (card.name not in self.market.names()):
                 pass
-            else:
-                print("WARN: Somehow left the truth table")
 
     def next_turn(self, display: Display | None = None) -> list[Event]:
         """Execute one full turn for the current player; return list of game events.
@@ -1015,15 +998,14 @@ class Game:
 
         # Die Rolling Phase
         emit(Event(type="turn_start", player=player.name))
-        dieroll, isDoubles = player.dieroll()
+        dieroll, isDoubles = player.dieroll(self.players)
         self.last_roll = dieroll
         emit(Event(type="roll", player=player.name, value=dieroll, is_doubles=isDoubles))
 
         # Radio Tower re-roll option
-        player._last_roll = dieroll
-        if player.chooseReroll():
+        if player.chooseReroll(dieroll):
             emit(Event(type="reroll", player=player.name))
-            dieroll, isDoubles = player.dieroll()
+            dieroll, isDoubles = player.dieroll(self.players)
             self.last_roll = dieroll
             emit(Event(type="roll", player=player.name, value=dieroll, is_doubles=isDoubles))
 
@@ -1042,7 +1024,7 @@ class Game:
 
         action = player.chooseAction(self.market)
         if action == 'buy':
-            options = self.market.names(maxcost=player.bank)
+            options = self.get_purchase_options()
             cardname = player.chooseCard(options, self)
             if cardname is not None:
                 for buy_event in player.buy(cardname, self.market):
@@ -1055,13 +1037,7 @@ class Game:
             active_player=player.name,
             roll=self.last_roll,
             players=[
-                PlayerSnapshot(
-                    name=p.name,
-                    bank=p.bank,
-                    landmarks=sum([p.hasTrainStation, p.hasShoppingMall,
-                                   p.hasAmusementPark, p.hasRadioTower]),
-                    cards=sum(1 for c in p.deck.deck if not isinstance(c, UpgradeCard)),
-                )
+                PlayerSnapshot(**self.get_player_state(p))
                 for p in self.players
             ],
             events=events,
@@ -1099,8 +1075,9 @@ class Game:
 
 
 def main():
+    # CLI flags control player count only. Bot type selection is done interactively
+    # in setPlayers(); adding per-bot-type flags here would duplicate that interface.
     parser = argparse.ArgumentParser(description='The card game Machi Koro')
-    parser.add_argument('-t', '--test', dest='unittests', action='store_true', required=False, help='run unit tests instead of executing the game code')
     parser.add_argument('--bots', type=int, default=0, metavar='N', help='number of bot players (skips interactive setup)')
     parser.add_argument('--humans', type=int, default=0, metavar='N', help='number of human players (skips interactive setup)')
     args = parser.parse_args()

@@ -4,7 +4,8 @@
 
 import unittest
 from unittest.mock import patch, MagicMock
-from harmonictook import Game, Bot, ThoughtfulBot, Human, TVStation, GameState, PlayerSnapshot, NullDisplay, UpgradeCard
+from harmonictook import Game, Bot, Human, TVStation, GameState, PlayerSnapshot, NullDisplay, UpgradeCard
+from bots import ThoughtfulBot
 
 
 class TestGameCreation(unittest.TestCase):

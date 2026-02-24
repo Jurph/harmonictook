@@ -7,8 +7,9 @@ from harmonictook import Blue, Green, Red, Stadium, TVStation, BusinessCenter, U
 from strategy import (
     ONE_DIE_PROB, TWO_DIE_PROB, P_DOUBLES,
     p_hits, ev, portfolio_ev, delta_ev, score_purchase_options,
-    EVBot,
 )
+from bots import EVBot, CoverageBot
+from tournament import finish_score
 
 
 class TestProbabilityTables(unittest.TestCase):
@@ -336,13 +337,15 @@ class TestScorePurchaseOptions(unittest.TestCase):
         self.player.bank = 999
 
     def test_returns_dict_of_floats(self):
-        result = score_purchase_options(self.player, self.game)
+        cards = list({c.name: c for c in self.game.market.deck}.values())
+        result = score_purchase_options(self.player, cards, self.game.players)
         self.assertIsInstance(result, dict)
         for v in result.values():
             self.assertIsInstance(v, float)
 
     def test_sorted_descending(self):
-        result = score_purchase_options(self.player, self.game)
+        cards = list({c.name: c for c in self.game.market.deck}.values())
+        result = score_purchase_options(self.player, cards, self.game.players)
         scores = list(result.values())
         self.assertEqual(scores, sorted(scores, reverse=True))
 
@@ -445,7 +448,7 @@ class TestEVBusinessCenter(unittest.TestCase):
 
 
 class TestEVBot(unittest.TestCase):
-    """EVBot raises on missing game context; selects highest-EV card when context is present."""
+    """EVBot scores Card objects directly; falls back to random when given only string names."""
 
     def setUp(self):
         self.game = Game(players=2)
@@ -453,10 +456,25 @@ class TestEVBot(unittest.TestCase):
         self.game.players[0] = self.bot
         self.game.current_player_index = 0
 
-    def test_raises_without_game(self):
-        """chooseCard with game=None must raise ValueError, not silently degrade."""
-        with self.assertRaises(ValueError):
-            self.bot.chooseCard(['Wheat Field', 'Ranch'])
+    def test_fallback_without_game(self):
+        """String options with no game fall back to random.choice, not a crash."""
+        from unittest.mock import patch
+        options = ['Wheat Field', 'Ranch']
+        with patch('bots.random.choice', return_value='Ranch') as mock_choice:
+            result = self.bot.chooseCard(options)
+        mock_choice.assert_called_once_with(options)
+        self.assertEqual(result, 'Ranch')
+
+    def test_accepts_card_objects_without_game(self):
+        """Card objects are scored directly; result is a string name from the options."""
+        from harmonictook import Blue
+        card1 = Blue("Wheat Field", 1, 1, 1, [1])
+        card2 = Blue("Mine", 5, 6, 5, [9])
+        card1.owner = self.bot
+        card2.owner = self.bot
+        result = self.bot.chooseCard([card1, card2])
+        self.assertIsInstance(result, str)
+        self.assertIn(result, ['Wheat Field', 'Mine'])
 
     def test_returns_none_for_empty_options(self):
         """Empty options list returns None regardless of game context."""
@@ -469,3 +487,157 @@ class TestEVBot(unittest.TestCase):
         result = self.bot.chooseCard(options, self.game)
         self.assertIsInstance(result, str)
         self.assertIn(result, options)
+
+
+class TestCoverageBotChooseCard(unittest.TestCase):
+    """CoverageBot.chooseCard prefers cards that fill new die-value slots over redundant ones."""
+
+    def setUp(self):
+        self.bot = CoverageBot(name="TestCoverageBot")
+        # Start with a Wheat Field (Blue, hitsOn=[1]) already in the deck
+        wheat = Blue("Wheat Field", 1, 1, 1, [1])
+        wheat.owner = self.bot
+        self.bot.deck.append(wheat)
+
+    def test_prefers_new_slot_over_duplicate(self):
+        """Ranch (die=2, uncovered) beats a second Wheat Field (die=1, already covered)."""
+        ranch = Blue("Ranch", 2, 1, 1, [2])
+        duplicate = Blue("Wheat Field", 1, 1, 1, [1])
+        ranch.owner = self.bot
+        duplicate.owner = self.bot
+        result = self.bot.chooseCard([ranch, duplicate])
+        self.assertEqual(result, "Ranch")
+
+    def test_returns_none_for_empty_options(self):
+        self.assertIsNone(self.bot.chooseCard([]))
+
+    def test_returns_string(self):
+        """Result is always a string name, not a Card object."""
+        ranch = Blue("Ranch", 2, 1, 1, [2])
+        ranch.owner = self.bot
+        result = self.bot.chooseCard([ranch])
+        self.assertIsInstance(result, str)
+        self.assertEqual(result, "Ranch")
+
+    def test_ev_tiebreaker_when_coverage_full(self):
+        """When all options are on already-covered slots, the higher-payout card wins."""
+        # Both cards hit die=1, already covered by Wheat Field in setUp.
+        # Mine pays 5; second Wheat Field pays 1. Mine should win on EV tiebreak.
+        mine = Blue("Mine", 5, 6, 5, [1])
+        duplicate = Blue("Wheat Field", 1, 1, 1, [1])
+        mine.owner = self.bot
+        duplicate.owner = self.bot
+        result = self.bot.chooseCard([mine, duplicate])
+        self.assertEqual(result, "Mine")
+
+    def test_landmark_beats_establishment(self):
+        """A landmark is always chosen over a coverage-expanding establishment."""
+        from harmonictook import UpgradeCard
+        ranch = Blue("Ranch", 2, 1, 1, [2])        # covers new slot
+        train = UpgradeCard("Train Station")
+        ranch.owner = self.bot
+        train.owner = self.bot
+        result = self.bot.chooseCard([ranch, train])
+        self.assertEqual(result, "Train Station")
+
+    def test_delta_coverage_train_station(self):
+        """Train Station coverage = difference between 2-die and 1-die own-turn coverage.
+
+        Clears the default starting deck (Wheat Field + Bakery, both in 1-die range) and
+        uses only a Mine (hitsOn=[9]): die=9 is unreachable with 1 die, so 1-die coverage
+        is 0.0 and 2-die coverage is P(9 on 2d6) = 4/36.
+        """
+        from harmonictook import UpgradeCard, Blue
+        from strategy import delta_coverage, _own_turn_coverage
+        bot = CoverageBot(name="TSTestBot")
+        bot.deck.deck.clear()
+        mine = Blue("Mine", 5, 6, 5, [9])
+        mine.owner = bot
+        bot.deck.append(mine)
+        card = UpgradeCard("Train Station")
+        expected = _own_turn_coverage(bot, 2) - _own_turn_coverage(bot, 1)
+        self.assertAlmostEqual(delta_coverage(card, bot, [bot]), expected, places=10)
+        self.assertGreater(expected, 0.0)
+
+    def test_delta_coverage_radio_tower(self):
+        """Radio Tower coverage = (1 - cov) * cov for re-roll on miss."""
+        from harmonictook import UpgradeCard
+        from strategy import delta_coverage, _own_turn_coverage, _num_dice
+        card = UpgradeCard("Radio Tower")
+        cov = _own_turn_coverage(self.bot, _num_dice(self.bot))
+        self.assertAlmostEqual(delta_coverage(card, self.bot, [self.bot]), (1.0 - cov) * cov, places=10)
+
+    def test_delta_coverage_amusement_park(self):
+        """Amusement Park coverage = P_DOUBLES * cov for bonus turns on doubles."""
+        from harmonictook import UpgradeCard
+        from strategy import delta_coverage, _own_turn_coverage, _num_dice, P_DOUBLES
+        card = UpgradeCard("Amusement Park")
+        cov = _own_turn_coverage(self.bot, _num_dice(self.bot))
+        self.assertAlmostEqual(delta_coverage(card, self.bot, [self.bot]), P_DOUBLES * cov, places=10)
+
+    def test_delta_coverage_shopping_mall(self):
+        """Shopping Mall has zero coverage effect."""
+        from harmonictook import UpgradeCard
+        from strategy import delta_coverage
+        card = UpgradeCard("Shopping Mall")
+        self.assertEqual(delta_coverage(card, self.bot, [self.bot]), 0.0)
+
+
+class TestFinishScore(unittest.TestCase):
+    """finish_score: landmarks×3 + establishments×2 + bank + 25 for winner."""
+
+    def setUp(self):
+        self.game = Game(players=2)
+        self.player = self.game.players[0]
+
+    def test_starting_state(self):
+        """Fresh player: Wheat Field (1) + Bakery (1) at 2×, bank=3, no snitch."""
+        # 0 landmarks, cards cost 1+1=2, bank=3 → 0 + 4 + 3 = 7
+        self.assertEqual(finish_score(self.player), 7)
+
+    def test_golden_snitch_for_winner(self):
+        """Winner gets +25 on top of their asset score."""
+        p = self.player
+        p.hasTrainStation = True
+        p.hasShoppingMall = True
+        p.hasAmusementPark = True
+        p.hasRadioTower = True
+        self.assertTrue(p.isWinner())
+        base = finish_score(p)
+        p.hasRadioTower = False
+        self.assertFalse(p.isWinner())
+        without_snitch = finish_score(p)
+        self.assertEqual(base - without_snitch, 25)
+
+    def test_landmark_multiplier(self):
+        """Each owned landmark contributes cost×3 to the score."""
+        p = self.player
+        before = finish_score(p)
+        p.hasTrainStation = True
+        train = UpgradeCard("Train Station")
+        train.owner = p
+        p.deck.append(train)
+        after = finish_score(p)
+        # Train Station cost=4, multiplier=3 → +12
+        self.assertEqual(after - before, 12)
+
+    def test_golden_snitch_breaks_tie_between_identical_players(self):
+        """Winner outscores an otherwise-identical non-winner by exactly 25."""
+        winner = self.game.players[0]
+        loser = self.game.players[1]
+        # Give both players the same three landmarks and same bank.
+        for p in [winner, loser]:
+            for name in ["Train Station", "Shopping Mall", "Amusement Park"]:
+                card = UpgradeCard(name)
+                card.owner = p
+                p.deck.append(card)
+                setattr(p, UpgradeCard.orangeCards[name][2], True)
+            p.bank = 10
+        # Winner gets the fourth landmark too.
+        radio = UpgradeCard("Radio Tower")
+        radio.owner = winner
+        winner.deck.append(radio)
+        winner.hasRadioTower = True
+        self.assertTrue(winner.isWinner())
+        self.assertFalse(loser.isWinner())
+        self.assertEqual(finish_score(winner) - finish_score(loser), 22 * 3 + 25)

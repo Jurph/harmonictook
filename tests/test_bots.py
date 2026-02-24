@@ -4,7 +4,8 @@
 
 import unittest
 from unittest.mock import patch
-from harmonictook import Game, Bot, ThoughtfulBot, TVStation, BusinessCenter, UpgradeCard
+from harmonictook import Game, Bot, TVStation, BusinessCenter, UpgradeCard
+from bots import ThoughtfulBot
 
 
 class TestBots(unittest.TestCase):
@@ -22,10 +23,8 @@ class TestBots(unittest.TestCase):
         """Verify Bot.chooseReroll() returns True on rolls ≤4 and False on rolls ≥5 when Radio Tower is owned."""
         testbot = self.testbot
         testbot.buy("Radio Tower", self.game.market)
-        testbot._last_roll = 3
-        self.assertTrue(testbot.chooseReroll())
-        testbot._last_roll = 9
-        self.assertFalse(testbot.chooseReroll())
+        self.assertTrue(testbot.chooseReroll(3))
+        self.assertFalse(testbot.chooseReroll(9))
 
     def testTVStationTargeting(self):
         """Verify TV Station steals exactly 5 coins (or all if target has fewer) from the chosen target."""
@@ -59,29 +58,25 @@ class TestBots(unittest.TestCase):
         self.assertEqual(after - before, 5)
 
     def testBusinessCenterBotSwaps(self):
-        """When a valid target and swappable cards exist, bot swaps: take highest-cost from target, give lowest (hitsOn sum + cost)."""
+        """Business Center steal uses the bot's own chooseCard() preference to pick what to take."""
         from harmonictook import Blue
         testbot = self.testbot
         otherbot = self.otherbot
         testbot.buy("Business Center", self.game.market)
-        # Give otherbot a higher-cost card so the swap is visible (bot takes highest-cost)
         forest = Blue("Forest", 1, 3, 1, [5])
         forest.owner = otherbot
         otherbot.deck.append(forest)
         testbot.isrollingdice = True
         otherbot.isrollingdice = False
-        my_swappable_before = [c.name for c in testbot.deck.deck if not isinstance(c, UpgradeCard)]
-        their_names_before = [c.name for c in otherbot.deck.deck if not isinstance(c, UpgradeCard)]
-        self.assertIn("Forest", their_names_before)
         bank_before = testbot.bank
-        for card in testbot.deck.deck:
-            if isinstance(card, BusinessCenter):
-                card.trigger(self.game.players)
-        # Bot should have swapped, not received 5 coins
+        with patch.object(testbot, 'chooseCard', return_value='Forest') as mock_cc:
+            for card in testbot.deck.deck:
+                if isinstance(card, BusinessCenter):
+                    card.trigger(self.game.players)
+        mock_cc.assert_called_once()
         self.assertEqual(testbot.bank, bank_before, "Bot should not get 5 coins when swap is possible")
-        # Bot takes highest-cost from target (Forest cost 3): Forest should now be in testbot's deck
         my_names_after = [c.name for c in testbot.deck.deck if not isinstance(c, UpgradeCard)]
-        self.assertIn("Forest", my_names_after, "Bot should take highest-cost card (Forest) from target")
+        self.assertIn("Forest", my_names_after, "Bot should take the card chosen by chooseCard()")
 
     def testBusinessCenterBotGivesLowestScore(self):
         """Bot gives away the card with the lowest (sum of hitsOn + cost) score."""

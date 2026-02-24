@@ -5,8 +5,8 @@
 import unittest
 from unittest.mock import patch
 
-from harmonictook import Bot, Game, ThoughtfulBot
-from strategy import EVBot
+from harmonictook import Bot, Game
+from bots import ThoughtfulBot, EVBot
 from tournament import (
     make_evbot, print_report, print_round_robin_report,
     run_bracket, run_match, run_round_robin, run_tournament,

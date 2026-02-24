@@ -44,10 +44,7 @@ Each step answers a plain-English question a bot needs to ask. Each step depends
 
 - ✅ **`chooseCard()` via argmax(delta_ev)** — EVBot in strategy.py uses score_purchase_options(); next_turn() passes game into chooseCard(options, self).
 
-- **Wire EVBot into CLI (one pass)**
-  - Add `--evbot` (or similar) to argparse in `main()`.
-  - In `setPlayers()` or player setup from CLI args, when evbot requested, use `EVBot` instead of `Bot`/`ThoughtfulBot`.
-  - Ensure `chooseCard(options, game)` receives `game` so EVBot can call `score_purchase_options()`.
+- ✅ **EVBot is playable** — available via `setPlayers()` interactive menu ("Tough Bot (EV-ranked strategy)") and in `tournament.py`. Bot type is chosen in-game; no CLI flags needed.
 
 Build a multi-dimensional card evaluation engine that scores cards across strategic dimensions:
 - Coverage (number of die results that trigger the card)
@@ -107,9 +104,127 @@ Architecture:
 
 ### Meta-Game Features
 - Statistics tracking (win rates, average game length, card value analysis)
-- Tournament mode (best of N games, ladder rankings)
 - Bot vs bot simulations for strategy testing
 - Export game logs for analysis
+
+### Tournament Mode
+
+**Swiss Tournament with Elo Ratings**
+
+Elo is a pairwise rating system. Multi-player Machi Koro games (2–4 players)
+require decomposing a finish order into pairwise outcomes before updating ratings.
+The core design challenge is defining "score" so that finish positions are
+comparable and Elo updates are meaningful.
+
+#### Step 1 — Finish Scoring (ordering non-winners)
+
+A game ends when one player owns all four landmarks. The winner is clear; the
+others need an ordering. Define a single integer **finish score** that rewards
+converting coins into assets:
+
+```
+finish_score = (sum of owned landmark costs) × 3
+             + (sum of owned establishment costs) × 2
+             + bank coins
+             + 25  ← "golden snitch" for the winner only
+```
+
+Landmark costs: Train Station=4, Shopping Mall=10, Amusement Park=16,
+Radio Tower=22. The 3× multiplier rewards landmark investment over card
+investment over hoarding; the 25-point golden snitch ensures the winner
+always outranks a non-winner regardless of bank size.
+
+Starting cards (Wheat Field cost=1, Bakery cost=1) are counted at 2× since
+tracking "purchased vs given" would require new Player state; the rounding
+error from two 1-coin cards is negligible.
+
+`finish_score(player)` is implemented in `tournament.py`.
+
+#### Step 2 — Pairwise Elo from Multi-Player Finish
+
+Convert the N-player finish order into C(N, 2) pairwise outcomes, then apply
+one standard Elo update per pair:
+
+```
+expected_i = 1 / (1 + 10^((r_j - r_i) / 400))
+result_i   = 1 if finish_score_i > finish_score_j else 0
+           = 0.5 if finish_score_i == finish_score_j  (exact tie only)
+r_i_new    = r_i + K' * (result_i - expected_i)
+```
+
+To avoid over-updating ratings from N-1 simultaneous pairings, scale the
+K-factor down: `K' = K / (N - 1)`. With K=32 and a 4-player table,
+`K' ≈ 10.7` per pair. This keeps per-game rating movement comparable to a
+2-player game regardless of table size.
+
+Initial rating: **1500** (chess standard). K-factor: **32** (fixed, no decay).
+Draws are exact ties only — losing by a single point is a loss.
+
+#### Step 3 — Tournament Structure
+
+All entrants play every round (no elimination). Pad the field to a multiple
+of 12 with `Bot` instances labelled "RandomBot" so tables divide cleanly.
+
+**Four rounds, played in order:**
+
+| Round | Format        | Tables  | Seeding         | Opponents faced |
+|-------|---------------|---------|-----------------|-----------------|
+| 1     | Random pairs  | N/2     | None (shuffle)  | 1               |
+| 2     | Seeded pairs  | N/2     | Elo adjacency   | 1               |
+| 3     | Seeded triples| N/3     | Elo adjacency   | 2               |
+| 4     | Seeded quads  | N/4     | Elo adjacency   | 3               |
+
+Each player faces exactly **7 distinct opponents** across the tournament
+(1 + 1 + 2 + 3). With 12 entrants, that is every other participant.
+
+**Seeded pairing rule:** sort all players by current Elo descending, then
+assign to tables in order (players 1–2, 3–4, etc. for pairs; 1–3, 4–6 for
+triples; 1–4, 5–8 for quads). Within each table, **highest Elo sits last**
+(latest turn order, slight handicap for the stronger player). Prefer pairings
+that avoid repeating a round-1 opponent in round 2; skip if impossible.
+
+**Padding:** `Bot` fills spots up to the next multiple of 12. Padding bots
+receive Elo updates normally so they act as a calibrated floor. With 24+
+entrants, run two "days" of 4 rounds each (8 rounds total, 15 opponents).
+
+#### Data Structures
+
+```python
+@dataclass
+class TournamentPlayer:
+    player_factory: Callable[[str], Player]  # e.g. make_evbot(n=3)
+    label: str                               # display name
+    elo: float = 1500.0
+    opponents_faced: list[str] = field(default_factory=list)
+
+@dataclass
+class RoundResult:
+    table: list[str]        # player labels in finish order (1st → last)
+    finish_scores: dict[str, int]   # label → finish_score
+    elo_deltas: dict[str, float]    # label → Elo change this round
+```
+
+Note: `tournament_points` removed — Elo alone is the standing metric.
+
+#### Reporting
+
+After each round, print a standings table sorted by Elo descending:
+
+```
+  Rank  Player            Elo     Δ      Opponents faced
+  ----  ----------------  ------  -----  ---------------
+     1  EVBot(N=5)        1543.2  +14.1  RandomBot, EVBot(N=1)
+     2  CoverageBot       1521.0   +6.3  ThoughtfulBot, RandomBot
+     3  ThoughtfulBot     1488.4   -5.9  CoverageBot, EVBot(N=3)
+     4  EVBot(N=1)        1447.4  -14.5  EVBot(N=5), RandomBot
+```
+
+Optionally: color gradient (cyan → green → yellow → red) for visual ranking.
+
+#### Out of Scope (for now)
+- Seeded brackets / single-elimination
+- Human players in rated tournaments
+- Persistence of Elo ratings across separate tournament runs
 
 ## Bugfix
 
@@ -154,8 +269,8 @@ Game
 ```
 ✅ Game.get_current_player() -> Player
 ✅ Game.get_purchase_options() -> list[str]
-   Game.get_player_state(player) -> dict       # Bank, deck, landmarks for display
-   Game.get_market_state() -> dict             # Available cards with quantities
+✅ Game.get_player_state(player) -> dict       # name, bank, landmarks, cards (used in history + display)
+✅ Game.get_market_state() -> dict[str, int]   # card name -> quantity in market
 ```
 
 #### Event System ✅
@@ -225,9 +340,12 @@ Concrete implementations:
 **Design / correctness**
 - **BusinessCenter.trigger** still calls `input()`/`print()` directly for Human — not event-driven. Task: Implement `Human.chooseBusinessCenterSwap(target, my_swappable, their_swappable)` to do the prompts and return `(card_to_give, card_to_take)` or `None`; then in `BusinessCenter.trigger()` call `dieroller.chooseBusinessCenterSwap(...)` for every player type (remove the `isinstance(dieroller, Human)` branch that does input/print).
 
+**Suspected dead code (verify then delete)**
+- ✅ `main()` CLI flag `-t/--test` (`dest='unittests'`) — removed (was parsed but never read).
+- ✅ Event type `"warn"` — removed from `EventType`, renderer branch, and unreachable else-branch in `refresh_market()` (nothing ever emitted it).
+- ✅ `specials.remove(card)` in `Player.buy()` — removed (modified a local list from `checkRemainingUpgrades()` that went out of scope immediately; `bestowPower()` does the real work).
+
 **Small, one-step tasks (do in any order)**
-- **Game.get_player_state(player)**: Implement a method that returns a dict suitable for display, e.g. `{"name": player.name, "bank": player.bank, "landmarks": count, "cards": count}`. Used by GUI/LogDisplay.
-- **Game.get_market_state()**: Implement a method that returns available cards with quantities (e.g. list of (name, count) or dict). Used by GUI/LogDisplay.
 - **Display.show_state(game)**: Add `show_state(self, game: Game) -> None` to the Display ABC; implement no-op in NullDisplay and a simple print of player list + market in TerminalDisplay.
 
 **Deferred / later**
@@ -235,6 +353,9 @@ Concrete implementations:
 - Performance benchmarks (after Event system stabilizes).
 - **Optional file split**: Move Player/Human/Bot, Card hierarchy, Store hierarchy, Display, Game into separate modules (e.g. `players.py`, `cards.py`, `stores.py`, `display.py`, `game.py`) — only if maintenance becomes painful.
 - **Optional trigger dispatch**: Replace hardcoded `[Red, Blue, Green, Stadium, TVStation, BusinessCenter]` with a `Card.color` (or similar) and dispatch by color order so new card types don’t require editing `next_turn()`.
+
+**Dead Code** 
+- TBD 
 
 ### Testing Strategy
 

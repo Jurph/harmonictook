@@ -16,8 +16,26 @@ import argparse
 import random
 from typing import Callable
 
-from harmonictook import Game, NullDisplay, Player, PlayerDeck
-from strategy import EVBot
+from harmonictook import Game, NullDisplay, Player, PlayerDeck, UpgradeCard
+from bots import EVBot, ThoughtfulBot, CoverageBot  # noqa: F401 (ThoughtfulBot/CoverageBot re-exported for callers)
+
+
+def finish_score(player: Player) -> int:
+    """Return a player's end-of-game score for tournament finish ordering.
+
+    Rewards converting coins into cards and landmarks:
+        landmark cost × 3    (landmark spend is the path to victory)
+        establishment cost × 2  (card spend is moderately rewarded)
+        bank coins × 1      (unspent coins count least)
+        +25 golden snitch   (winning is worth more than any single card)
+
+    Starting cards (Wheat Field, Bakery) are included at the 2× rate; tracking
+    "purchased vs given" would require additional Player state and the rounding
+    error from two 1-coin cards is negligible.
+    """
+    landmark_value = sum(c.cost for c in player.deck.deck if isinstance(c, UpgradeCard))
+    card_value = sum(c.cost for c in player.deck.deck if not isinstance(c, UpgradeCard))
+    return landmark_value * 3 + card_value * 2 + player.bank + (25 if player.isWinner() else 0)
 
 
 def run_match(bue_factory: Callable[[str], Player], n_players: int) -> bool:

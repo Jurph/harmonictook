@@ -4,7 +4,8 @@
 
 import unittest
 from unittest.mock import patch
-from harmonictook import Game, Player, Bot, Human, ThoughtfulBot, setPlayers
+from harmonictook import Game, Player, Bot, Human, setPlayers
+from bots import ThoughtfulBot
 
 
 class TestPlayerBasics(unittest.TestCase):
@@ -225,7 +226,7 @@ class TestSetPlayers(unittest.TestCase):
     @patch('builtins.input', side_effect=['EVRobo', 'Trivial', 'n'])
     def testSetPlayersInteractiveToughBot(self, mock_input, mock_userChoice):
         """Verify interactive: Tough Bot → EVBot with correct name."""
-        from strategy import EVBot
+        from bots import EVBot
         result = setPlayers()
         self.assertEqual(len(result), 2)
         self.assertIsInstance(result[0], EVBot)
