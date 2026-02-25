@@ -101,15 +101,17 @@ but needs 3 more landmarks still needs 3 rounds minimum. A player who has no coi
 could win in one more buy still needs to earn the money first.
 
 **Why landmarks affect the denominator, not just the ceiling**: Train Station, Shopping
-Mall, Amusement Park, and Radio Tower all change the player's income distribution. They
-don't just reduce `n_landmarks_remaining` by 1 — they shift `ev_per_turn`:
+Mall, Amusement Park, and Radio Tower all change the player's income distribution. They 
+reduce `n_landmarks_remaining` by 1, but they also shift `ev_per_turn`:
+
 - Amusement Park: doubles give a free turn. Exact effect multiplies rounds-until-income
   by 5/6 (geometric series: E[extra turns per doubles] = 1/5, so mean turns per income
   cycle = 6/5, so TUV denominator grows by factor 6/5, TUV shrinks by factor 5/6).
 - Radio Tower: reroll on 0-income turn raises EV and lowers variance; increases
   denominator.
 - Shopping Mall: +1 coin on Bakery/Convenience Store activations; raises EV.
-- Train Station: 2-dice rolling opens up higher-value cards; changes EV distribution.
+- Train Station: 2-dice rolling opens up higher-value cards; changes EV distribution 
+  from uniform to triangular.
 
 This is why TUV should eventually consume `round_pmf` rather than `portfolio_ev` — the
 PMF correctly models all of these effects together.

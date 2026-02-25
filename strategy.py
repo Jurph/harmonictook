@@ -62,6 +62,63 @@ def _own_turn_coverage(player: Player, num_dice: int) -> float:
     )
 
 
+def _die_pmf(n_dice: int) -> dict[int, float]:
+    """Return the Probability Mass Function (PMF) for rolling n_dice d6s and summing.
+
+    n_dice=1 → 6 outcomes equally weighted. n_dice=2 → 11 outcomes, triangular.
+    """
+    if n_dice == 1:
+        return dict(ONE_DIE_PROB)
+    if n_dice == 2:
+        return dict(TWO_DIE_PROB)
+    # 3+ dice: convolve repeatedly
+    acc = _die_pmf(1)
+    for _ in range(n_dice - 1):
+        acc = _convolve(acc, ONE_DIE_PROB)
+    return acc
+
+
+def _convolve(a: dict[int, float], b: dict[int, float]) -> dict[int, float]:
+    """Combine two independent PMFs by summing their outcomes.
+
+    result[x + y] += a[x] * b[y] for all (x, y) pairs.
+    """
+    out: dict[int, float] = {}
+    for x, px in a.items():
+        for y, py in b.items():
+            k = x + y
+            out[k] = out.get(k, 0.0) + px * py
+    return out
+
+
+def _own_turn_income(player: Player, players: list[Player], roll: int) -> int:
+    """Coin income for player on their own turn when the die total is roll.
+
+    Blue, Green, Stadium, TVStation only. Business Center is 0 (swap, not coins).
+    """
+    total = 0
+    for card in player.deck.deck:
+        if roll not in card.hitsOn:
+            continue
+        if isinstance(card, Blue):
+            total += card.payout
+        elif isinstance(card, Green):
+            if getattr(card, "multiplies", None) is not None:
+                total += card.payout * _count_category(player, card.multiplies)
+            else:
+                payout = card.payout
+                if player.hasShoppingMall and card.name == "Convenience Store":
+                    payout += 1
+                total += payout
+        elif isinstance(card, Stadium):
+            total += card.payout * (len(players) - 1)
+        elif isinstance(card, TVStation):
+            opponents = [p for p in players if p is not player]
+            if opponents:
+                total += min(5, max(p.bank for p in opponents))
+    return total
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -420,6 +477,117 @@ def delta_ev(
     direct = ev(card, player, players, N)
     synergy = _factory_synergy_gain(card, player, players, N)
     return direct + synergy
+
+
+# ---------------------------------------------------------------------------
+# PMF (probability mass functions)
+# ---------------------------------------------------------------------------
+
+def own_turn_pmf(player: Player, players: list[Player]) -> dict[int, float]:
+    """Income distribution for player on their own turn.
+
+    Fires: Blue, Green, Stadium, TVStation (Business Center contributes 0 coins).
+    Applies: Radio Tower reroll on 0 income; Amusement Park bonus-turn as extra
+    draw from same distribution. Train Station: player rolls 2 dice if owned.
+    """
+    n_dice = _num_dice(player)
+    die_pmf = _die_pmf(n_dice)
+    base: dict[int, float] = {}
+    for roll, prob in die_pmf.items():
+        income = _own_turn_income(player, players, roll)
+        base[income] = base.get(income, 0.0) + prob
+
+    # Key assumption: Radio Tower rerolls only on a 0 income turn. Later we might model 0, 1, or even 2 as unsatisfactory. 
+    if getattr(player, "hasRadioTower", False):
+        p0 = base.get(0, 0.0)
+        rt: dict[int, float] = {0: p0 * p0}
+        for x, px in base.items():
+            if x != 0:
+                rt[x] = px * (1.0 + p0)
+        base = rt
+
+    # Key assumption: Amusement Park gives a free turn on doubles, but we don't really handle the fact that only even turns
+    # get a bonus turn, so our PMF for the first half of the turn is "evens-only". We just use the regular PMF. 
+    if getattr(player, "hasAmusementPark", False):
+        two_turns = _convolve(base, base)
+        combined: dict[int, float] = {}
+        for k in set(base) | set(two_turns):
+            combined[k] = (1.0 - P_DOUBLES) * base.get(k, 0.0) + P_DOUBLES * two_turns.get(k, 0.0)
+        base = combined
+
+    return base
+
+
+def _opponent_turn_income(observer: Player, roller: Player, roll: int) -> int:
+    """Coin income for observer when roller rolls roll: Blues + Reds (steal from roller)."""
+    total = 0
+    for card in observer.deck.deck:
+        if roll not in card.hitsOn:
+            continue
+        if isinstance(card, Blue):
+            total += card.payout
+        elif isinstance(card, Red):
+            total += min(card.payout, roller.bank)
+    return total
+
+
+def opponent_turn_pmf(observer: Player, roller: Player, players: list[Player]) -> dict[int, float]:
+    """Income distribution for observer when roller takes their turn.
+
+    Fires: observer's Blue (all rolls), observer's Red (roller's turn only).
+    Does not fire: Green, Purple, or observer's Radio Tower (roller's choice).
+    """
+    die_pmf = _die_pmf(_num_dice(roller))
+    out: dict[int, float] = {}
+    for roll, prob in die_pmf.items():
+        income = _opponent_turn_income(observer, roller, roll)
+        out[income] = out.get(income, 0.0) + prob
+    return out
+
+
+def round_pmf(player: Player, players: list[Player]) -> dict[int, float]:
+    """Net income for player over one full round (own turn + all opponents' turns).
+
+    Convolution of own_turn_pmf with opponent_turn_pmf for each opponent.
+    Values may be negative (Red theft is already in opponent_turn_pmf as positive
+    to observer; here we treat observer's income as positive so round = own + opp1 + opp2...).
+    """
+    acc = own_turn_pmf(player, players)
+    for p in players:
+        if p is player:
+            continue
+        opp_pmf = opponent_turn_pmf(player, p, players)
+        acc = _convolve(acc, opp_pmf)
+    return acc
+
+
+def pmf_mean(pmf: dict[int, float]) -> float:
+    """Weighted average income. Matches portfolio_ev when PMF is round_pmf."""
+    if not pmf:
+        return 0.0
+    return sum(x * p for x, p in pmf.items())
+
+
+def pmf_variance(pmf: dict[int, float]) -> float:
+    """E[X^2] - E[X]^2."""
+    if not pmf:
+        return 0.0
+    mu = pmf_mean(pmf)
+    e2 = sum((x * x) * p for x, p in pmf.items())
+    return e2 - mu * mu
+
+
+def pmf_percentile(pmf: dict[int, float], p: float) -> float:
+    """Smallest income x such that P(income <= x) >= p. p=0.5 is median."""
+    if not pmf or p <= 0.0:
+        return min(pmf.keys(), default=0)
+    items = sorted(pmf.items())
+    cumulative_sum = 0.0
+    for x, prob in items:
+        cumulative_sum += prob
+        if cumulative_sum >= p:
+            return float(x)
+    return float(items[-1][0])
 
 
 def score_purchase_options(player: Player, cards: list[Card], players: list[Player], N: int = 1) -> dict[Card, float]:

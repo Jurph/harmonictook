@@ -7,6 +7,9 @@ from harmonictook import Blue, Green, Red, Stadium, TVStation, BusinessCenter, U
 from strategy import (
     ONE_DIE_PROB, TWO_DIE_PROB, P_DOUBLES,
     p_hits, ev, portfolio_ev, delta_ev, score_purchase_options,
+    _die_pmf, _convolve,
+    own_turn_pmf, opponent_turn_pmf, round_pmf,
+    pmf_mean, pmf_variance, pmf_percentile,
 )
 from bots import EVBot, CoverageBot
 from tournament import finish_score
@@ -641,3 +644,79 @@ class TestFinishScore(unittest.TestCase):
         self.assertTrue(winner.isWinner())
         self.assertFalse(loser.isWinner())
         self.assertEqual(finish_score(winner) - finish_score(loser), 22 * 3 + 25)
+
+
+class TestPMF(unittest.TestCase):
+    """PMF building blocks and round_pmf vs portfolio_ev."""
+
+    def test_die_pmf_one_die(self):
+        pmf = _die_pmf(1)
+        self.assertEqual(set(pmf.keys()), {1, 2, 3, 4, 5, 6})
+        self.assertAlmostEqual(sum(pmf.values()), 1.0, places=10)
+        for v in pmf.values():
+            self.assertAlmostEqual(v, 1/6, places=10)
+
+    def test_die_pmf_two_dice(self):
+        pmf = _die_pmf(2)
+        self.assertEqual(set(pmf.keys()), set(range(2, 13)))
+        self.assertAlmostEqual(sum(pmf.values()), 1.0, places=10)
+        self.assertAlmostEqual(pmf[7], 6/36, places=10)
+
+    def test_convolve_preserves_mass(self):
+        a = {0: 0.5, 1: 0.5}
+        b = {0: 0.5, 1: 0.5}
+        c = _convolve(a, b)
+        self.assertAlmostEqual(sum(c.values()), 1.0, places=10)
+        self.assertAlmostEqual(c[0], 0.25, places=10)
+        self.assertAlmostEqual(c[1], 0.5, places=10)
+        self.assertAlmostEqual(c[2], 0.25, places=10)
+
+    def test_pmf_mean_variance_percentile(self):
+        pmf = {0: 0.25, 2: 0.5, 4: 0.25}
+        self.assertAlmostEqual(pmf_mean(pmf), 2.0, places=10)
+        # E[X^2] = 0 + 4*0.5 + 16*0.25 = 6, Var = 6 - 2^2 = 2
+        self.assertAlmostEqual(pmf_variance(pmf), 2.0, places=10)
+        self.assertAlmostEqual(pmf_percentile(pmf, 0.5), 2.0, places=10)
+        self.assertAlmostEqual(pmf_percentile(pmf, 0.25), 0.0, places=10)
+        self.assertAlmostEqual(pmf_percentile(pmf, 0.9), 4.0, places=10)
+
+    def test_own_turn_pmf_empty_deck(self):
+        game = Game(players=2)
+        player = game.players[0]
+        player.deck.deck.clear()
+        pmf = own_turn_pmf(player, game.players)
+        self.assertEqual(set(pmf.keys()), {0})
+        self.assertAlmostEqual(sum(pmf.values()), 1.0, places=10)
+        self.assertAlmostEqual(pmf_mean(pmf), 0.0, places=10)
+
+    def test_own_turn_pmf_single_blue(self):
+        game = Game(players=2)
+        player = game.players[0]
+        player.deck.deck.clear()
+        card = Blue("Wheat", 1, 1, 1, [1])
+        card.owner = player
+        player.deck.append(card)
+        pmf = own_turn_pmf(player, game.players)
+        self.assertAlmostEqual(sum(pmf.values()), 1.0, places=10)
+        # 1 die: P(1)=1/6 → income 1, else 0
+        self.assertAlmostEqual(pmf.get(0, 0), 5/6, places=10)
+        self.assertAlmostEqual(pmf.get(1, 0), 1/6, places=10)
+        self.assertAlmostEqual(pmf_mean(pmf), 1/6, places=10)
+
+    def test_round_pmf_mean_matches_portfolio_ev_simple(self):
+        """pmf_mean(round_pmf(...)) should match portfolio_ev for a simple 2p deck."""
+        game = Game(players=2)
+        p0, p1 = game.players[0], game.players[1]
+        for p in game.players:
+            p.deposit(10)
+            p.deck.deck.clear()
+        # One Blue [1] each: each gets 1 on roll 1 from own turn, 1 on opponent roll 1
+        for p in game.players:
+            card = Blue("Wheat", 1, 1, 1, [1])
+            card.owner = p
+            p.deck.append(card)
+        ev_p0 = portfolio_ev(p0, game.players, N=1)
+        rp = round_pmf(p0, game.players)
+        pmf_ev = pmf_mean(rp)
+        self.assertAlmostEqual(ev_p0, pmf_ev, places=6,
+            msg="round_pmf mean should match portfolio_ev")

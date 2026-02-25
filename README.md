@@ -168,13 +168,15 @@ immediately.
 
 - Opponents now feature four personas:
     - **Random** chooses entirely randomly, except if it has enough to buy a landmark (EASY)
-    - **Thoughtful** pulls from a hard-coded list of priorities (EASY/MEDIUM)
+    - **Thoughtful** follows a hard-coded list of priorities (EASY/MEDIUM)
     - **Coverage** seeks to maximize the number of possible die rolls that "hit" for it (STRONG)
     - **EV** tries to maximize expected value, but has a limited time horizon (STRONG)
 
 # Future features
 
 - More opponents: 
+    - **Mouse** tries to combine Ranches and Cheese Factories into an engine
+    - **Dwarf** specializes in Blue, going for a Forest/Mine/Furniture engine 
     - **Cheater** short-changes its payouts to other players and takes extra coins from the bank 
     - **Mimic** tries to copy another player's strategy as best it can 
     - **Riverboat** builds an engine that pays out what's needed to win 
