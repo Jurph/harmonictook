@@ -59,11 +59,13 @@ pmf_percentile(pmf, p) -> float
 
 **Design simplifications (explicit decisions):**
 
-1. **Radio Tower**: Player rerolls iff their first roll yields 0 income (not 0 on the die —
-   0 *income* from their portfolio). This is applied inside `own_turn_pmf`. Probability
-   math: `P(income=0 with RT) = P(zero_income)²`; `P(income=x>0 with RT) = P(roll=x) +
-   P(zero_income) * P(reroll=x)`. Build `pmf_percentile` (not just `pmf_median`) so bots
-   can choose their risk threshold.
+1. **Radio Tower**: Player uses optimal reroll strategy: reroll iff income < E_own (the
+   mean income from that PMF). Applied inside `own_turn_pmf`. Formula:
+   `P(final=x) = P(x) × (I(x ≥ E_own) + P_reroll)` where `P_reroll = Σ P(x) for x < E_own`.
+   This is consistent with `_radio_tower_gain` which uses `max(V(r), E_own)`. The earlier
+   "reroll on 0 income only" approximation was retired because it diverged from the EV model
+   whenever positive-but-below-mean incomes exist. Build `pmf_percentile` (not just
+   `pmf_median`) so bots can choose their risk threshold.
 
 2. **Amusement Park**: Doubles (matching dice: 2-2, 3-3, etc.) give the player a bonus
    turn. Simplification: value the bonus turn as `pmf_mean(own_turn_pmf(...))` — i.e.,
@@ -116,21 +118,20 @@ reduce `n_landmarks_remaining` by 1, but they also shift `ev_per_turn`:
 This is why TUV should eventually consume `round_pmf` rather than `portfolio_ev` — the
 PMF correctly models all of these effects together.
 
-**Three TUV flavors (to be implemented in `strategy.py`):**
+**Three TUV flavors (implemented in `strategy.py`):**
 
 ```
-tuv_expected(player, game) -> float
+✅ tuv_expected(player, game) -> float
     E[turns to win] = max(n_landmarks_remaining,
                           ceil((cost_remaining - bank) / pmf_mean(round_pmf(...))))
-    For now, uses portfolio_ev() as the denominator approximation.
 
-tuv_percentile(player, game, p=0.5) -> float
+✅ tuv_percentile(player, game, p=0.5) -> float
     Use pmf_percentile(round_pmf(...), p) as the per-round income estimate.
     p=0.5 is median TUV. p>0.5 is optimistic (lucky runs). p<0.5 is pessimistic.
     Allows a trailing bot to ask "what TUV do I get if income goes well?" (p=0.8)
     versus a leading bot asking "what's my worst-case TUV?" (p=0.3).
 
-tuv_variance(player, game) -> float
+✅ tuv_variance(player, game) -> float
     Variance in turns-to-win, derived from pmf_variance(round_pmf(...)).
     High variance = outcome is uncertain; low variance = win/loss already determined.
 ```
@@ -140,35 +141,34 @@ or behind player A is relative to player B. Positive = A is losing. Negative = A
 winning. A bot can use delta-TUV to decide whether to play aggressively (negative delta,
 can afford it) or defensively (positive delta, must catch up).
 
-**Implementation plan (when ready):**
-1. Stub `own_turn_pmf`, `opponent_turn_pmf`, `round_pmf` returning `NotImplemented`
-2. Implement `_die_pmf` and `_convolve` (pure math, easy to test)
-3. Implement `own_turn_pmf` for a player with no landmarks (baseline)
-4. Add each landmark's effect one at a time, with a test for each
-5. Implement `opponent_turn_pmf` (Blue + Red only)
-6. Implement `round_pmf` via convolution
-7. Verify `pmf_mean(round_pmf(...))` matches `portfolio_ev(...)` for simple cases
-8. Implement `tuv_expected` consuming `round_pmf`; verify against closed-form
-9. Design TUVBot: a bot that selects purchases by minimizing its own TUV (or
-   maximizing delta-TUV vs. the leading opponent). EVBot remains a pure EV machine
-   and is not modified. TUVBot, if built correctly, may approach nearly-optimal play.
+**Implementation plan:**
+✅ 1. Stub `own_turn_pmf`, `opponent_turn_pmf`, `round_pmf` returning `NotImplemented`
+✅ 2. Implement `_die_pmf` and `_convolve` (pure math, easy to test)
+✅ 3. Implement `own_turn_pmf` for a player with no landmarks (baseline)
+✅ 4. Add each landmark's effect one at a time, with a test for each
+✅ 5. Implement `opponent_turn_pmf` (Blue + Red only; roller's AP applied via same approximation as own_turn_pmf)
+✅ 6. Implement `round_pmf` via convolution
+✅ 7. Verify `pmf_mean(round_pmf(...))` matches `portfolio_ev(...)` for simple cases (caveat: only for non–Amusement Park players; AP PMF uses E×(1+P_D) vs portfolio_ev's E/(1−P_D))
+✅ 8. Implement `tuv_expected` consuming `round_pmf`; verify against closed-form
+   9. Design TUVBot: a bot that selects purchases by minimizing its own TUV (or
+      maximizing delta-TUV vs. the leading opponent). EVBot remains a pure EV machine
+      and is not modified. TUVBot, if built correctly, may approach nearly-optimal play.
 
 #### Applications once PMF is built
 
-**Tournament finish scoring**: Replace the current heuristic formula
-(`landmark_cost × 3 + card_cost × 2 + bank_coins + 25 for winner`) with
-`50.0 - round(tuv_expected(player, game), 1)`. This gives empirically-grounded
-credit for game progress: a player 2 rounds from winning scores ~48; one 10 rounds
-out scores ~40. The winner's score is naturally highest (TUV = 0 → score = 50).
-The fixed `+25` golden-snitch is no longer needed — TUV already creates the gap.
-Update `finish_score()` in `tournament.py` once `tuv_expected` is implemented and
-verified.
+✅ **Tournament finish scoring**: `finish_score()` in `tournament.py` now uses
+`50 - round(tuv_expected(player, game))`. Winner scores 50 (ERUV=0); others score
+proportionally lower. The old heuristic formula (`landmark_cost × 3 + card_cost × 2
++ bank_coins + 25`) is retired. Dynamic range empirically confirmed via game_stats.txt
+across 190 games: competitive bots cluster in 40–50; random bots with zero income can
+score deeply negative (acceptable — they sort correctly to the bottom of standings).
 
-**Migrate EV and coverage to PMF-derived**: Once `pmf_mean(round_pmf(...))` is
-verified to match `portfolio_ev(...)` for simple cases, reimplement `portfolio_ev`
-as a thin wrapper. Similarly, `coverage_value` (fraction of nonzero outcomes) is
-`1.0 - pmf[0]` from `own_turn_pmf`. These migrations are optional cleanup — the
-PMF is the source of truth, the wrappers just preserve the existing API.
+**Migrate EV and coverage to PMF-derived** ← *next planned step*: PMF is verified
+and consistent (Radio Tower and Amusement Park are now canonical in both `own_turn_pmf`
+and `opponent_turn_pmf`). Reimplement `portfolio_ev` as a thin wrapper around
+`pmf_mean(round_pmf(...))`. Similarly, `coverage_value` (fraction of nonzero outcomes)
+becomes `1.0 - pmf[0]` from `own_turn_pmf`. Wrappers preserve the existing API; callers
+need not change. Once done, `_ev_blue`, `_ev_green`, etc. can be retired.
 
 
 ### Graphical User Interface
@@ -221,30 +221,13 @@ require decomposing a finish order into pairwise outcomes before updating rating
 The core design challenge is defining "score" so that finish positions are
 comparable and Elo updates are meaningful.
 
-#### Step 1 — Finish Scoring (ordering non-winners)
+#### Step 1 — Finish Scoring (ordering non-winners) ✅
 
-A game ends when one player owns all four landmarks. The winner is clear; the
-others need an ordering. Define a single integer **finish score** that rewards
-converting coins into assets:
-
-```
-finish_score = (sum of owned landmark costs) × 3
-             + (sum of owned establishment costs) × 2
-             + bank coins
-             + 25  ← "golden snitch" for the winner only
-```
-
-Landmark costs: Train Station=4, Shopping Mall=10, Amusement Park=16,
-Radio Tower=22. The 3× multiplier rewards landmark investment over card
-investment over hoarding; the 25-point golden snitch ensures the winner
-nearly always outranks a non-winner unless the non-winner has failed to
-seize the victory. 
-
-Starting cards (Wheat Field cost=1, Bakery cost=1) are counted at 2× since
-tracking "purchased vs given" would require new Player state; the rounding
-error from two 1-coin cards is negligible.
-
-`finish_score(player)` is implemented in `tournament.py`.
+`finish_score(player, game)` in `tournament.py` uses ERUV: `50 - round(tuv_expected(player, game))`.
+Winner scores 50; others score lower based on rounds remaining. The original heuristic
+formula (`landmark_cost × 3 + card_cost × 2 + bank_coins + 25`) is retired — it
+rewarded money-holding over board position, and the ERUV-based score is more
+diagnostically meaningful.
 
 #### Step 2 — Pairwise Elo from Multi-Player Finish
 

@@ -19,6 +19,7 @@ from typing import Callable
 
 from harmonictook import Bot, Game, NullDisplay, Player, PlayerDeck, UpgradeCard
 from bots import EVBot, ThoughtfulBot, CoverageBot  # noqa: F401 (ThoughtfulBot/CoverageBot re-exported for callers)
+from strategy import tuv_expected
 
 
 _ELO_K: float = 32.0
@@ -41,22 +42,15 @@ class RoundResult:
     elo_deltas: dict[str, float]   # label → Elo change from this table
 
 
-def finish_score(player: Player) -> int:
+def finish_score(player: Player, game: Game) -> int:
     """Return a player's end-of-game score for tournament finish ordering.
 
-    Rewards converting coins into cards and landmarks:
-        landmark cost × 3    (landmark spend is the path to victory)
-        establishment cost × 2  (card spend is moderately rewarded)
-        bank coins × 1      (unspent coins count least)
-        +25 golden snitch   (winning is worth more than any single card)
-
-    Starting cards (Wheat Field, Bakery) are included at the 2× rate; tracking
-    "purchased vs given" would require additional Player state and the rounding
-    error from two 1-coin cards is negligible.
+    ERUV-based: 50 - round(ERUV), so expected rounds until victory maps to a score.
+    Winner (ERUV=0) scores 50; a player ~2 rounds from winning scores ~48;
+    ~10 rounds out scores ~40. Higher score = closer to victory / better position.
     """
-    landmark_value = sum(c.cost for c in player.deck.deck if isinstance(c, UpgradeCard))
-    card_value = sum(c.cost for c in player.deck.deck if not isinstance(c, UpgradeCard))
-    return landmark_value * 3 + card_value * 2 + player.bank + (25 if player.isWinner() else 0)
+    eruv = tuv_expected(player, game)
+    return int(round(50.0 - eruv))
 
 
 def run_match(bue_factory: Callable[[str], Player], n_players: int) -> bool:
@@ -159,7 +153,7 @@ def print_report(bue_name: str, results: dict[int, tuple[int, int]]) -> None:
     print(f"  Overall:   {total_wins}W / {total_games - total_wins}L  ({total_pct:.1f}%)\n")
 
 
-def _run_table(players: list[TournamentPlayer]) -> RoundResult:
+def _run_table(players: list[TournamentPlayer], stats_path: str | None = None) -> RoundResult:
     """Run one game; update Elo and scores in place; return the round result."""
     n = len(players)
     k_prime = _ELO_K / (n - 1)
@@ -173,7 +167,12 @@ def _run_table(players: list[TournamentPlayer]) -> RoundResult:
         instances[tp.label] = p
     game.run(display=NullDisplay())
 
-    scores: dict[str, int] = {tp.label: finish_score(instances[tp.label]) for tp in players}
+    scores: dict[str, int] = {tp.label: finish_score(instances[tp.label], game) for tp in players}
+
+    if stats_path is not None:
+        player_scores = "  ".join(f"{tp.label}={scores[tp.label]}" for tp in players)
+        with open(stats_path, "a", encoding="utf-8") as f:
+            f.write(f"turns={game.turn_number}  n={n}  {player_scores}\n")
 
     # Accumulate Elo deltas using pre-game ratings (all pairs computed against initial Elo)
     deltas: dict[str, float] = {tp.label: 0.0 for tp in players}
@@ -245,6 +244,7 @@ def run_swiss_tournament(
     entries: list[TournamentPlayer],
     n_days: int = 1,
     verbose: bool = True,
+    stats_path: str | None = None,
 ) -> list[TournamentPlayer]:
     """Run n_days x 4-round Swiss tournament; return players sorted by final Elo.
 
@@ -287,7 +287,7 @@ def run_swiss_tournament(
             r1_tables = [shuffled[i:i + 2] for i in range(0, len(shuffled), 2)]
         else:
             r1_tables = _seeded_tables(entries, 2)
-        r1_results = [_run_table(t) for t in r1_tables]
+        r1_results = [_run_table(t, stats_path) for t in r1_tables]
         total_rounds += 1
 
         # Build same-day round-1 opponent map for deconflict in round 2
@@ -304,7 +304,7 @@ def run_swiss_tournament(
         # Round 2 — seeded pairs, avoid same-day round-1 rematches
         r2_tables = _seeded_tables(entries, 2)
         r2_tables = _avoid_pair_repeats(r2_tables, recent)
-        r2_results = [_run_table(t) for t in r2_tables]
+        r2_results = [_run_table(t, stats_path) for t in r2_tables]
         total_rounds += 1
         if verbose:
             _print_round(total_rounds, "Seeded pairs", r2_results)
@@ -312,7 +312,7 @@ def run_swiss_tournament(
 
         # Round 3 — seeded triples
         r3_tables = _seeded_tables(entries, 3)
-        r3_results = [_run_table(t) for t in r3_tables]
+        r3_results = [_run_table(t, stats_path) for t in r3_tables]
         total_rounds += 1
         if verbose:
             _print_round(total_rounds, "Seeded triples", r3_results)
@@ -320,7 +320,7 @@ def run_swiss_tournament(
 
         # Round 4 — seeded quads
         r4_tables = _seeded_tables(entries, 4)
-        r4_results = [_run_table(t) for t in r4_tables]
+        r4_results = [_run_table(t, stats_path) for t in r4_tables]
         total_rounds += 1
         if verbose:
             _print_round(total_rounds, "Seeded quads", r4_results)
@@ -360,11 +360,13 @@ def main() -> None:
                         help="number of 4-round days in the Swiss tournament (default: 1)")
     parser.add_argument("--horizons", type=int, nargs="+", default=[1, 3, 5, 7],
                         metavar="N", help="EV horizons to compare in round-robin (default: 1 3 5 7)")
+    parser.add_argument("--stats", metavar="FILE", default=None,
+                        help="append per-game stats (turns, n, scores) to FILE")
     args = parser.parse_args()
 
     if args.swiss:
         entries = _default_swiss_field()
-        run_swiss_tournament(entries, n_days=args.days)
+        run_swiss_tournament(entries, n_days=args.days, stats_path=args.stats)
     elif args.round_robin:
         named_factories = [(f"EVBot(N={n})", make_evbot(n)) for n in args.horizons]
         results = run_round_robin(named_factories, n_games=args.games)

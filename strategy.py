@@ -4,6 +4,7 @@
 # Pure functions only: no side effects, no I/O. Returns scores; callers decide how to act.
 
 from __future__ import annotations
+import math
 import statistics
 from harmonictook import Blue, Green, Red, Stadium, TVStation, BusinessCenter, Player, Game, Card, UpgradeCard  # noqa: F401 (UpgradeCard used in ev dispatch TODO)
 
@@ -482,13 +483,24 @@ def delta_ev(
 # ---------------------------------------------------------------------------
 # PMF (probability mass functions)
 # ---------------------------------------------------------------------------
+#
+# The PMF is the primitive for round-level income. It gives us:
+#   - Expected (mean) rounds to plan for victory (ERUV / tuv_expected).
+#   - Optimist/pessimist views via percentiles (e.g. 25/75 or 10/90) with tuv_percentile.
+#   - Comparison of who's leading (opponent ERUV / delta_tuv).
+#   - Confidence over a horizon: "how sure are we that we'll be across the goal line
+#     in N rounds?" via prob_victory_within_n_rounds. High variance in the PMF means
+#     we can spend margin shoring up weak spots (e.g. coverage, synergy) instead of
+#     assuming the mean path.
+
 
 def own_turn_pmf(player: Player, players: list[Player]) -> dict[int, float]:
-    """Income distribution for player on their own turn.
+    """Income distribution (PMF) for player on their own turn.
 
-    Fires: Blue, Green, Stadium, TVStation (Business Center contributes 0 coins).
-    Applies: Radio Tower reroll on 0 income; Amusement Park bonus-turn as extra
-    draw from same distribution. Train Station: player rolls 2 dice if owned.
+    Returns dict[int, float]: income in coins -> probability. Fires: Blue, Green,
+    Stadium, TVStation (Business Center contributes 0 coins). Applies: Radio Tower
+    reroll on 0 income; Amusement Park bonus-turn as extra draw from same distribution.
+    Train Station: player rolls 2 dice if owned.
     """
     n_dice = _num_dice(player)
     die_pmf = _die_pmf(n_dice)
@@ -497,17 +509,16 @@ def own_turn_pmf(player: Player, players: list[Player]) -> dict[int, float]:
         income = _own_turn_income(player, players, roll)
         base[income] = base.get(income, 0.0) + prob
 
-    # Key assumption: Radio Tower rerolls only on a 0 income turn. Later we might model 0, 1, or even 2 as unsatisfactory. 
+    # Optimal Radio Tower strategy: reroll if income < E_own (consistent with _radio_tower_gain).
+    # P(final=x) = P(x) * (I(x >= mu) + P_reroll), where P_reroll = sum of P(x) for x < mu.
     if getattr(player, "hasRadioTower", False):
-        p0 = base.get(0, 0.0)
-        rt: dict[int, float] = {0: p0 * p0}
-        for x, px in base.items():
-            if x != 0:
-                rt[x] = px * (1.0 + p0)
-        base = rt
+        mu = pmf_mean(base)
+        p_reroll = sum(px for x, px in base.items() if x < mu)
+        base = {x: px * ((1.0 if x >= mu else 0.0) + p_reroll) for x, px in base.items()}
 
-    # Key assumption: Amusement Park gives a free turn on doubles, but we don't really handle the fact that only even turns
-    # get a bonus turn, so our PMF for the first half of the turn is "evens-only". We just use the regular PMF. 
+    # Amusement Park: (1-P_D)*base + P_D*convolve(base,base) → mean = E*(1+P_D). portfolio_ev uses
+    # _turn_multiplier = 1/(1-P_D) (geometric series) → E/(1-P_D). These diverge; PMF underestimates.
+    # Verification that pmf_mean(round_pmf(...)) matches portfolio_ev(...) (TODO step 7) only holds for non-AP players.
     if getattr(player, "hasAmusementPark", False):
         two_turns = _convolve(base, base)
         combined: dict[int, float] = {}
@@ -531,26 +542,35 @@ def _opponent_turn_income(observer: Player, roller: Player, roll: int) -> int:
     return total
 
 
-def opponent_turn_pmf(observer: Player, roller: Player, players: list[Player]) -> dict[int, float]:
-    """Income distribution for observer when roller takes their turn.
+def opponent_turn_pmf(
+    observer: Player, roller: Player, players: list[Player]
+) -> dict[int, float]:
+    """PMF of income for observer when roller takes their turn.
 
     Fires: observer's Blue (all rolls), observer's Red (roller's turn only).
     Does not fire: Green, Purple, or observer's Radio Tower (roller's choice).
+    Amusement Park on roller: same one-bonus-turn approximation as own_turn_pmf.
     """
     die_pmf = _die_pmf(_num_dice(roller))
-    out: dict[int, float] = {}
+    base: dict[int, float] = {}
     for roll, prob in die_pmf.items():
         income = _opponent_turn_income(observer, roller, roll)
-        out[income] = out.get(income, 0.0) + prob
-    return out
+        base[income] = base.get(income, 0.0) + prob
+    if getattr(roller, "hasAmusementPark", False):
+        two_turns = _convolve(base, base)
+        combined: dict[int, float] = {}
+        for k in set(base) | set(two_turns):
+            combined[k] = (1.0 - P_DOUBLES) * base.get(k, 0.0) + P_DOUBLES * two_turns.get(k, 0.0)
+        return combined
+    return base
 
 
 def round_pmf(player: Player, players: list[Player]) -> dict[int, float]:
-    """Net income for player over one full round (own turn + all opponents' turns).
+    """PMF of net income for player over one full round (own turn + all opponents' turns).
 
-    Convolution of own_turn_pmf with opponent_turn_pmf for each opponent.
-    Values may be negative (Red theft is already in opponent_turn_pmf as positive
-    to observer; here we treat observer's income as positive so round = own + opp1 + opp2...).
+    Convolution of own_turn_pmf with opponent_turn_pmf for each opponent. All income
+    values are non-negative. This is the building block for ERUV, percentile TUV,
+    and confidence intervals (e.g. P(victory within N rounds)).
     """
     acc = own_turn_pmf(player, players)
     for p in players:
@@ -562,14 +582,24 @@ def round_pmf(player: Player, players: list[Player]) -> dict[int, float]:
 
 
 def pmf_mean(pmf: dict[int, float]) -> float:
-    """Weighted average income. Matches portfolio_ev when PMF is round_pmf."""
+    """Expected (mean) income from the PMF. E[X] = sum(x * p).
+
+    When pmf is round_pmf(...), this is expected income per round — the denominator
+    for planning "expected rounds until victory" (ERUV). Matches portfolio_ev for
+    non–Amusement Park players.
+    """
     if not pmf:
         return 0.0
     return sum(x * p for x, p in pmf.items())
 
 
 def pmf_variance(pmf: dict[int, float]) -> float:
-    """E[X^2] - E[X]^2."""
+    """Variance of the distribution. E[X^2] - E[X]^2.
+
+    High variance means outcome is uncertain; we're less sure we'll hit the mean path.
+    Use this to decide whether to shore up weak spots in the engine (coverage, synergy)
+    or to treat ERUV as a confident estimate.
+    """
     if not pmf:
         return 0.0
     mu = pmf_mean(pmf)
@@ -578,9 +608,13 @@ def pmf_variance(pmf: dict[int, float]) -> float:
 
 
 def pmf_percentile(pmf: dict[int, float], p: float) -> float:
-    """Smallest income x such that P(income <= x) >= p. p=0.5 is median."""
+    """Smallest income x such that P(income <= x) >= p.
+
+    p=0.5 is median. p>0.5 gives an optimistic (high) income; p<0.5 pessimistic.
+    Enables 25/75 or 10/90 optimist/pessimist TUV when passed to tuv_percentile(..., p).
+    """
     if not pmf or p <= 0.0:
-        return min(pmf.keys(), default=0)
+        return float(min(pmf.keys(), default=0))
     items = sorted(pmf.items())
     cumulative_sum = 0.0
     for x, prob in items:
@@ -588,6 +622,122 @@ def pmf_percentile(pmf: dict[int, float], p: float) -> float:
         if cumulative_sum >= p:
             return float(x)
     return float(items[-1][0])
+
+
+def pmf_mass_at_least(pmf: dict[int, float], threshold: int) -> float:
+    """Probability that the outcome is >= threshold. Sum of p for all x >= threshold."""
+    if not pmf:
+        return 0.0
+    return sum(p for x, p in pmf.items() if x >= threshold)
+
+
+def prob_victory_within_n_rounds(
+    player: Player, game: Game, n_rounds: int
+) -> float:
+    """Probability that cumulative income over n_rounds meets or exceeds the coin deficit.
+
+    Uses the n-fold convolution of round_pmf: "how sure are we that we'll be across
+    the goal line in N rounds?" Assumes we only need to earn deficit = cost_remaining - bank;
+    does not enforce the landmark-count floor (caller may require n_rounds >= n_landmarks).
+    Returns 0.0 if player has already won.
+    """
+    if player.isWinner():
+        return 1.0
+    deficit = max(0, _landmark_cost_remaining(player) - player.bank)
+    if deficit <= 0:
+        return 1.0
+    rp = round_pmf(player, game.players)
+    acc: dict[int, float] = {0: 1.0}
+    for _ in range(n_rounds):
+        acc = _convolve(acc, rp)
+    return pmf_mass_at_least(acc, deficit)
+
+
+# ---------------------------------------------------------------------------
+# TUV (turns until victory) / ERUV (expected rounds until victory)
+# ---------------------------------------------------------------------------
+#
+# ERUV is the expected (mean) number of rounds until victory — we plan using the mean
+# income path. We also support percentile-based views (25/75 or 10/90 optimist/pessimist)
+# and comparing opponent_ERUV (delta_tuv) to see who's leading and who's likely to win.
+# For a given horizon N, use prob_victory_within_n_rounds for a confidence interval:
+# "how sure are we that we'll be across the goal line in N rounds?" When variance is
+# high, we can spend margin shoring up weak spots in our PMF instead of trusting the mean.
+
+
+def _n_landmarks_remaining(player: Player) -> int:
+    """Number of landmarks the player still needs to buy (0–4)."""
+    owned = sum(1 for c in player.deck.deck if isinstance(c, UpgradeCard))
+    return max(0, 4 - owned)
+
+
+def _landmark_cost_remaining(player: Player) -> int:
+    """Total cost (in coins) of landmarks the player has not yet purchased.
+
+    Sums UpgradeCard.orangeCards cost for each landmark the player does not own.
+    """
+    owned_names = {c.name for c in player.deck.deck if isinstance(c, UpgradeCard)}
+    return sum(
+        UpgradeCard.orangeCards[name][0]
+        for name in UpgradeCard.orangeCards
+        if name not in owned_names
+    )
+
+
+def tuv_expected(player: Player, game: Game) -> float:
+    """Expected rounds until victory (ERUV): mean-based plan.
+
+    max(n_landmarks_remaining, ceil((cost_remaining - bank) / mean_income_per_round)).
+    Uses pmf_mean(round_pmf(...)) as per-round income. Returns 0.0 if player has won.
+    Example: 5.22 means we plan for ~5–6 rounds; use prob_victory_within_n_rounds for
+    confidence (e.g. how sure we are we'll be across the goal line in 6 rounds).
+    """
+    if player.isWinner():
+        return 0.0
+    n_landmarks = _n_landmarks_remaining(player)
+    cost_remaining = _landmark_cost_remaining(player)
+    income_per_round = pmf_mean(round_pmf(player, game.players))
+    if income_per_round <= 0:
+        return float(n_landmarks)
+    deficit = max(0, cost_remaining - player.bank)
+    income_ceiling = math.ceil(deficit / income_per_round)
+    return float(max(n_landmarks, income_ceiling))
+
+
+def tuv_percentile(player: Player, game: Game, p: float = 0.5) -> float:
+    """Rounds-until-victory using percentile income instead of mean.
+
+    p=0.5 is median. p>0.5 optimistic (e.g. 0.75 or 0.9 for "if things go well");
+    p<0.5 pessimistic (e.g. 0.25 or 0.1 for worst-case). Enables 25/75 or 10/90
+    optimist/pessimist planning.
+    """
+    if player.isWinner():
+        return 0.0
+    n_landmarks = _n_landmarks_remaining(player)
+    cost_remaining = _landmark_cost_remaining(player)
+    income = pmf_percentile(round_pmf(player, game.players), p)
+    if income <= 0:
+        return float(n_landmarks)
+    deficit = max(0, cost_remaining - player.bank)
+    return float(max(n_landmarks, math.ceil(deficit / income)))
+
+
+def tuv_variance(player: Player, game: Game) -> float:
+    """Variance of per-round income (from round_pmf).
+
+    High variance = outcome uncertain; ERUV is less reliable and we may want to shore
+    up weak spots. Low variance = win/loss trajectory is already fairly determined.
+    """
+    return pmf_variance(round_pmf(player, game.players))
+
+
+def delta_tuv(player_a: Player, player_b: Player, game: Game) -> float:
+    """Difference in expected rounds until victory: ERUV(A) - ERUV(B).
+
+    Positive = A is behind (more rounds left), negative = A is ahead. Use to compare
+    opponent_ERUV and determine who's leading and who's likely to win.
+    """
+    return tuv_expected(player_a, game) - tuv_expected(player_b, game)
 
 
 def score_purchase_options(player: Player, cards: list[Card], players: list[Player], N: int = 1) -> dict[Card, float]:

@@ -7,9 +7,11 @@ from harmonictook import Blue, Green, Red, Stadium, TVStation, BusinessCenter, U
 from strategy import (
     ONE_DIE_PROB, TWO_DIE_PROB, P_DOUBLES,
     p_hits, ev, portfolio_ev, delta_ev, score_purchase_options,
-    _die_pmf, _convolve,
+    _die_pmf, _convolve, _landmark_cost_remaining,
     own_turn_pmf, opponent_turn_pmf, round_pmf,
-    pmf_mean, pmf_variance, pmf_percentile,
+    pmf_mean, pmf_variance, pmf_percentile, pmf_mass_at_least,
+    prob_victory_within_n_rounds,
+    tuv_expected, tuv_percentile, tuv_variance, delta_tuv,
 )
 from bots import EVBot, CoverageBot
 from tournament import finish_score
@@ -587,48 +589,32 @@ class TestCoverageBotChooseCard(unittest.TestCase):
 
 
 class TestFinishScore(unittest.TestCase):
-    """finish_score: landmarks×3 + establishments×2 + bank + 25 for winner."""
+    """finish_score: ERUV-based 50 - round(ERUV); winner scores 50."""
 
     def setUp(self):
         self.game = Game(players=2)
         self.player = self.game.players[0]
 
-    def test_starting_state(self):
-        """Fresh player: Wheat Field (1) + Bakery (1) at 2×, bank=3, no snitch."""
-        # 0 landmarks, cards cost 1+1=2, bank=3 → 0 + 4 + 3 = 7
-        self.assertEqual(finish_score(self.player), 7)
-
-    def test_golden_snitch_for_winner(self):
-        """Winner gets +25 on top of their asset score."""
+    def test_winner_scores_50(self):
+        """Winner has ERUV=0 so finish_score is 50."""
         p = self.player
-        p.hasTrainStation = True
-        p.hasShoppingMall = True
-        p.hasAmusementPark = True
-        p.hasRadioTower = True
+        for name in UpgradeCard.orangeCards:
+            card = UpgradeCard(name)
+            card.owner = p
+            p.deck.append(card)
+            setattr(p, UpgradeCard.orangeCards[name][2], True)
         self.assertTrue(p.isWinner())
-        base = finish_score(p)
-        p.hasRadioTower = False
-        self.assertFalse(p.isWinner())
-        without_snitch = finish_score(p)
-        self.assertEqual(base - without_snitch, 25)
+        self.assertEqual(finish_score(p, self.game), 50)
 
-    def test_landmark_multiplier(self):
-        """Each owned landmark contributes cost×3 to the score."""
-        p = self.player
-        before = finish_score(p)
-        p.hasTrainStation = True
-        train = UpgradeCard("Train Station")
-        train.owner = p
-        p.deck.append(train)
-        after = finish_score(p)
-        # Train Station cost=4, multiplier=3 → +12
-        self.assertEqual(after - before, 12)
+    def test_starting_state_below_50(self):
+        """Fresh player has many rounds to go; score = 50 - ERUV is < 50 (may be negative)."""
+        score = finish_score(self.player, self.game)
+        self.assertLess(score, 50)
 
-    def test_golden_snitch_breaks_tie_between_identical_players(self):
-        """Winner outscores an otherwise-identical non-winner by exactly 25."""
+    def test_winner_outscores_non_winner(self):
+        """Winner (50) outscores an otherwise-identical non-winner (50 - ERUV)."""
         winner = self.game.players[0]
         loser = self.game.players[1]
-        # Give both players the same three landmarks and same bank.
         for p in [winner, loser]:
             for name in ["Train Station", "Shopping Mall", "Amusement Park"]:
                 card = UpgradeCard(name)
@@ -636,14 +622,326 @@ class TestFinishScore(unittest.TestCase):
                 p.deck.append(card)
                 setattr(p, UpgradeCard.orangeCards[name][2], True)
             p.bank = 10
-        # Winner gets the fourth landmark too.
         radio = UpgradeCard("Radio Tower")
         radio.owner = winner
         winner.deck.append(radio)
         winner.hasRadioTower = True
         self.assertTrue(winner.isWinner())
         self.assertFalse(loser.isWinner())
-        self.assertEqual(finish_score(winner) - finish_score(loser), 22 * 3 + 25)
+        self.assertEqual(finish_score(winner, self.game), 50)
+        self.assertGreater(finish_score(winner, self.game), finish_score(loser, self.game))
+
+    def test_more_bank_higher_score(self):
+        """More coins reduce the income deficit so ERUV drops and finish_score increases."""
+        p = self.player
+        p.deck.deck.clear()
+        card = Blue("Wheat", 1, 1, 1, [1])
+        card.owner = p
+        p.deck.append(card)
+        p.deposit(0)
+        before = finish_score(p, self.game)
+        p.deposit(15)
+        after = finish_score(p, self.game)
+        self.assertGreater(after, before)
+
+
+class TestDiePMFGuardrails(unittest.TestCase):
+    """_die_pmf: impossible values must be absent, symmetry, recursive 3-die case."""
+
+    def test_one_die_excludes_impossible_values(self):
+        """Values outside 1–6 cannot appear in a 1-die PMF."""
+        pmf = _die_pmf(1)
+        for v in [0, 7, 12]:
+            self.assertNotIn(v, pmf, msg=f"key {v} should not appear in 1-die PMF")
+
+    def test_two_dice_exclude_impossible_values(self):
+        """Values 1 and 13+ cannot be rolled with 2 dice."""
+        pmf = _die_pmf(2)
+        for v in [0, 1, 13]:
+            self.assertNotIn(v, pmf, msg=f"key {v} should not appear in 2-die PMF")
+
+    def test_two_dice_symmetric(self):
+        """2d6 is symmetric around 7: pmf[k] == pmf[14-k] for k in 2..7."""
+        pmf = _die_pmf(2)
+        for k in range(2, 8):
+            self.assertAlmostEqual(pmf[k], pmf[14 - k], places=10,
+                msg=f"pmf[{k}] != pmf[{14-k}] — 2d6 should be symmetric")
+
+    def test_three_dice_support_and_sum(self):
+        """3d6: support is exactly {{3..18}} and probabilities sum to 1."""
+        pmf = _die_pmf(3)
+        self.assertEqual(set(pmf.keys()), set(range(3, 19)))
+        self.assertAlmostEqual(sum(pmf.values()), 1.0, places=10)
+
+    def test_three_dice_min_max_probability(self):
+        """3d6: P(3) == P(18) == 1/216 (only one way to roll all-ones or all-sixes)."""
+        pmf = _die_pmf(3)
+        self.assertAlmostEqual(pmf[3], 1 / 216, places=10)
+        self.assertAlmostEqual(pmf[18], 1 / 216, places=10)
+
+    def test_returns_copy_not_module_constant(self):
+        """Mutating the returned dict must not corrupt the module-level ONE_DIE_PROB."""
+        from strategy import ONE_DIE_PROB
+        pmf = _die_pmf(1)
+        pmf[1] = 999.0
+        self.assertAlmostEqual(ONE_DIE_PROB[1], 1 / 6, places=10)
+
+
+class TestConvolveProperties(unittest.TestCase):
+    """_convolve: identity element, commutativity, exact support — no spurious keys."""
+
+    def test_identity_element(self):
+        """convolve(pmf, {{0: 1.0}}) is equivalent to pmf for every key."""
+        d = _die_pmf(1)
+        result = _convolve(d, {0: 1.0})
+        for k, v in d.items():
+            self.assertAlmostEqual(result.get(k, 0.0), v, places=10,
+                msg=f"key {k} changed after convolving with identity {{0: 1.0}}")
+
+    def test_commutative(self):
+        """_convolve(a, b) and _convolve(b, a) agree on every key."""
+        a = {1: 0.4, 2: 0.6}
+        b = {10: 0.3, 20: 0.7}
+        ab = _convolve(a, b)
+        ba = _convolve(b, a)
+        for k in set(ab) | set(ba):
+            self.assertAlmostEqual(ab.get(k, 0.0), ba.get(k, 0.0), places=10)
+
+    def test_exact_support_two_point_masses(self):
+        """Convolving two point masses produces exactly one outcome at their sum."""
+        result = _convolve({3: 1.0}, {5: 1.0})
+        self.assertEqual(set(result.keys()), {8})
+        self.assertAlmostEqual(result[8], 1.0, places=10)
+
+    def test_no_spurious_keys(self):
+        """Result contains only keys x+y reachable from (a, b) — nothing outside that set."""
+        a = {1: 0.5, 3: 0.5}
+        b = {10: 0.4, 20: 0.6}
+        result = _convolve(a, b)
+        reachable = {x + y for x in a for y in b}  # {11, 21, 13, 23}
+        self.assertEqual(set(result.keys()), reachable)
+
+
+class TestPMFStatsEdgeCases(unittest.TestCase):
+    """pmf_mean, pmf_variance, pmf_percentile: edge cases and mathematical invariants."""
+
+    def test_mean_empty_returns_zero(self):
+        self.assertAlmostEqual(pmf_mean({}), 0.0, places=10)
+
+    def test_mean_single_outcome(self):
+        self.assertAlmostEqual(pmf_mean({7: 1.0}), 7.0, places=10)
+
+    def test_variance_empty_returns_zero(self):
+        self.assertAlmostEqual(pmf_variance({}), 0.0, places=10)
+
+    def test_variance_degenerate_is_zero(self):
+        """A certain outcome has zero spread — variance must be exactly 0 regardless of value."""
+        for x in [0, 1, -3, 100]:
+            self.assertAlmostEqual(pmf_variance({x: 1.0}), 0.0, places=10,
+                msg=f"Degenerate PMF at x={x} should have variance 0")
+
+    def test_variance_nonnegative_invariant(self):
+        """Variance must be >= 0 for any valid distribution (guards against floating-point sign flip)."""
+        for pmf in [_die_pmf(1), _die_pmf(2), {0: 0.5, 1: 0.3, 3: 0.2}]:
+            self.assertGreaterEqual(pmf_variance(pmf), -1e-12,
+                msg="Variance must be non-negative")
+
+    def test_percentile_p_zero_or_negative_returns_minimum(self):
+        """p <= 0.0 always returns the smallest income in the PMF."""
+        pmf = {2: 0.5, 5: 0.5}
+        self.assertAlmostEqual(pmf_percentile(pmf, 0.0), 2.0, places=10)
+        self.assertAlmostEqual(pmf_percentile(pmf, -1.0), 2.0, places=10)
+
+    def test_percentile_p_one_returns_maximum(self):
+        """p=1.0 returns the largest income key even when cumulative probabilities are imprecise."""
+        pmf = {1: 0.4, 3: 0.3, 6: 0.3}
+        self.assertAlmostEqual(pmf_percentile(pmf, 1.0), 6.0, places=10)
+
+    def test_percentile_empty_pmf_returns_zero(self):
+        """Empty PMF with any p returns 0.0 without raising."""
+        self.assertAlmostEqual(pmf_percentile({}, 0.5), 0.0, places=10)
+        self.assertAlmostEqual(pmf_percentile({}, 1.0), 0.0, places=10)
+
+    def test_percentile_at_exact_cdf_boundary(self):
+        """p exactly at a cumulative boundary returns that boundary's income, not the next."""
+        # CDF: P(X <= 1) = 0.3, P(X <= 4) = 0.8, P(X <= 7) = 1.0
+        pmf = {1: 0.3, 4: 0.5, 7: 0.2}
+        self.assertAlmostEqual(pmf_percentile(pmf, 0.3), 1.0, places=10)
+        self.assertAlmostEqual(pmf_percentile(pmf, 0.8), 4.0, places=10)
+
+
+class TestOwnTurnPMFLandmarks(unittest.TestCase):
+    """own_turn_pmf with Radio Tower, Amusement Park, and Train Station effects."""
+
+    def setUp(self):
+        self.game = Game(players=2)
+        self.player = self.game.players[0]
+        self.player.deck.deck.clear()
+        self.player.deposit(10)
+        self.game.players[1].deposit(10)
+        # Baseline: Blue[1] gives income 1 on 1/6 of rolls, 0 on 5/6
+        card = Blue("Wheat", 1, 1, 1, [1])
+        card.owner = self.player
+        self.player.deck.append(card)
+
+    def _pmf(self):
+        return own_turn_pmf(self.player, self.game.players)
+
+    def test_radio_tower_p0_equals_base_p0_squared(self):
+        """P(income=0 | RT) == P(income=0 | no RT)² — the double-miss probability."""
+        base_p0 = self._pmf().get(0, 0.0)
+        self.player.hasRadioTower = True
+        rt_p0 = self._pmf().get(0, 0.0)
+        self.assertAlmostEqual(rt_p0, base_p0 * base_p0, places=10)
+
+    def test_radio_tower_preserves_total_probability(self):
+        """PMF with Radio Tower still sums to 1.0 (no mass lost or created by reroll)."""
+        self.player.hasRadioTower = True
+        self.assertAlmostEqual(sum(self._pmf().values()), 1.0, places=10)
+
+    def test_radio_tower_never_lowers_mean(self):
+        """Radio Tower is strictly non-harmful: mean income with RT >= mean without RT."""
+        base_mean = pmf_mean(self._pmf())
+        self.player.hasRadioTower = True
+        self.assertGreaterEqual(pmf_mean(self._pmf()), base_mean - 1e-12)
+
+    def test_radio_tower_no_effect_when_every_roll_pays(self):
+        """RT leaves the mean unchanged when P(income=0) is already 0 — nothing to reroll."""
+        self.player.deck.deck.clear()
+        always = Blue("Always", 1, 1, 3, [1, 2, 3, 4, 5, 6])
+        always.owner = self.player
+        self.player.deck.append(always)
+        base_mean = pmf_mean(self._pmf())
+        self.player.hasRadioTower = True
+        self.assertAlmostEqual(pmf_mean(self._pmf()), base_mean, places=10)
+
+    def test_amusement_park_mean_equals_base_times_one_plus_p_doubles(self):
+        """AP PMF mean == base_mean * (1 + P_DOUBLES).
+
+        This is the deliberate PMF underestimate: it models one bonus draw on doubles,
+        not the full geometric series. portfolio_ev uses 1/(1-P_D) for comparison.
+        """
+        base_mean = pmf_mean(self._pmf())
+        self.player.hasAmusementPark = True
+        self.assertAlmostEqual(pmf_mean(self._pmf()), base_mean * (1 + P_DOUBLES), places=10)
+
+    def test_amusement_park_preserves_total_probability(self):
+        """AP convolution distributes mass between single-turn and double-turn — sum stays 1.0."""
+        self.player.hasAmusementPark = True
+        self.assertAlmostEqual(sum(self._pmf().values()), 1.0, places=10)
+
+    def test_train_station_enables_high_roll_income(self):
+        """With Train Station, a Blue[9] card can fire; with 1 die, roll 9 is unreachable."""
+        self.player.deck.deck.clear()
+        mine = Blue("Mine", 5, 6, 5, [9])
+        mine.owner = self.player
+        self.player.deck.append(mine)
+        # 1 die: max roll is 6, so Blue[9] never fires — income is always 0
+        base = self._pmf()
+        self.assertEqual(set(base.keys()), {0},
+            msg="With 1 die, roll 9 is unreachable — income must always be 0")
+        # 2 dice: P(9) = 4/36, Mine pays 5
+        self.player.hasTrainStation = True
+        ts = self._pmf()
+        self.assertIn(5, ts, msg="Mine (payout=5) should be reachable on roll 9 with 2 dice")
+        self.assertAlmostEqual(ts.get(5, 0.0), 4 / 36, places=10)
+
+
+class TestOpponentTurnPMF(unittest.TestCase):
+    """opponent_turn_pmf fires Blue and Red for observer; Green and Purple must not fire."""
+
+    def setUp(self):
+        self.game = Game(players=2)
+        self.observer = self.game.players[0]
+        self.roller = self.game.players[1]
+        self.observer.deck.deck.clear()
+        self.roller.deposit(100)
+
+    def test_green_card_does_not_fire_on_opponent_turn(self):
+        """Observer's Green card must yield 0 income on every opponent roll — Green is own-turn only."""
+        bakery = Green("Bakery", 2, 1, 1, [2, 3])
+        bakery.owner = self.observer
+        self.observer.deck.append(bakery)
+        pmf = opponent_turn_pmf(self.observer, self.roller, self.game.players)
+        self.assertEqual(set(pmf.keys()), {0},
+            msg="Green should never appear in opponent_turn_pmf")
+        self.assertAlmostEqual(pmf[0], 1.0, places=10)
+
+    def test_blue_card_fires_on_opponent_turn(self):
+        """Observer's Blue[1] pays out when roller rolls 1 (P=1/6 with 1 die)."""
+        wheat = Blue("Wheat", 1, 1, 1, [1])
+        wheat.owner = self.observer
+        self.observer.deck.append(wheat)
+        pmf = opponent_turn_pmf(self.observer, self.roller, self.game.players)
+        self.assertAlmostEqual(pmf.get(1, 0.0), 1 / 6, places=10)
+        self.assertAlmostEqual(pmf.get(0, 0.0), 5 / 6, places=10)
+
+    def test_red_card_income_bounded_by_roller_bank(self):
+        """Observer steals min(payout, roller.bank) — a poor roller limits the take."""
+        self.roller.bank = 2
+        cafe = Red("Cafe", 3, 2, 5, [1, 2, 3, 4, 5, 6])
+        cafe.owner = self.observer
+        self.observer.deck.append(cafe)
+        pmf = opponent_turn_pmf(self.observer, self.roller, self.game.players)
+        # Every roll triggers; steal = min(5, 2) = 2 on every outcome
+        self.assertEqual(set(pmf.keys()), {2})
+        self.assertAlmostEqual(pmf[2], 1.0, places=10)
+
+    def test_red_card_yields_zero_when_roller_has_no_coins(self):
+        """Red card income is 0 when the roller is broke — nothing to steal."""
+        self.roller.bank = 0
+        cafe = Red("Cafe", 3, 2, 5, [1, 2, 3, 4, 5, 6])
+        cafe.owner = self.observer
+        self.observer.deck.append(cafe)
+        pmf = opponent_turn_pmf(self.observer, self.roller, self.game.players)
+        self.assertEqual(set(pmf.keys()), {0})
+        self.assertAlmostEqual(pmf[0], 1.0, places=10)
+
+    def test_sum_always_one(self):
+        """opponent_turn_pmf probabilities sum to 1.0 for any card combination."""
+        game = Game(players=2)
+        pmf = opponent_turn_pmf(game.players[0], game.players[1], game.players)
+        self.assertAlmostEqual(sum(pmf.values()), 1.0, places=10)
+
+
+class TestRoundPMF(unittest.TestCase):
+    """round_pmf: convolution of own turn + each opponent turn."""
+
+    def test_sum_always_one(self):
+        """round_pmf probabilities sum to 1.0."""
+        game = Game(players=2)
+        for p in game.players:
+            p.deposit(10)
+        self.assertAlmostEqual(
+            sum(round_pmf(game.players[0], game.players).values()), 1.0, places=10
+        )
+
+    def test_solo_player_equals_own_turn_pmf(self):
+        """round_pmf(p, [p]) is identical to own_turn_pmf(p, [p]) — no opponents, no convolution."""
+        game = Game(players=2)
+        player = game.players[0]
+        player.deposit(10)
+        solo_round = round_pmf(player, [player])
+        own = own_turn_pmf(player, [player])
+        for k in set(solo_round) | set(own):
+            self.assertAlmostEqual(
+                solo_round.get(k, 0.0), own.get(k, 0.0), places=10,
+                msg=f"key {k}: round_pmf and own_turn_pmf differ for a solo player",
+            )
+
+    def test_all_income_nonnegative_with_only_blue_cards(self):
+        """With no Red cards, every income outcome in round_pmf is >= 0."""
+        game = Game(players=3)
+        for p in game.players:
+            p.deck.deck.clear()
+            p.deposit(10)
+            card = Blue("Wheat", 1, 1, 1, [1])
+            card.owner = p
+            p.deck.append(card)
+        pmf = round_pmf(game.players[0], game.players)
+        for k in pmf:
+            self.assertGreaterEqual(k, 0,
+                msg=f"income key {k} is negative — Blue cards should never produce negative income")
 
 
 class TestPMF(unittest.TestCase):
@@ -704,7 +1002,10 @@ class TestPMF(unittest.TestCase):
         self.assertAlmostEqual(pmf_mean(pmf), 1/6, places=10)
 
     def test_round_pmf_mean_matches_portfolio_ev_simple(self):
-        """pmf_mean(round_pmf(...)) should match portfolio_ev for a simple 2p deck."""
+        """pmf_mean(round_pmf(...)) matches portfolio_ev for a simple 2p deck (no Amusement Park).
+
+        Caveat: verification only holds for non-AP players; AP uses E*(1+P_D) vs portfolio_ev's E/(1-P_D).
+        """
         game = Game(players=2)
         p0, p1 = game.players[0], game.players[1]
         for p in game.players:
@@ -720,3 +1021,90 @@ class TestPMF(unittest.TestCase):
         pmf_ev = pmf_mean(rp)
         self.assertAlmostEqual(ev_p0, pmf_ev, places=6,
             msg="round_pmf mean should match portfolio_ev")
+
+
+class TestTUV(unittest.TestCase):
+    """TUV (turns until victory) consumes round_pmf; winner has 0, delta_tuv sign = who is behind."""
+
+    def test_winner_has_zero_tuv(self):
+        game = Game(players=2)
+        p = game.players[0]
+        for name in UpgradeCard.orangeCards:
+            card = UpgradeCard(name)
+            card.owner = p
+            p.deck.append(card)
+            setattr(p, UpgradeCard.orangeCards[name][2], True)
+        self.assertTrue(p.isWinner())
+        self.assertAlmostEqual(tuv_expected(p, game), 0.0, places=10)
+
+    def test_tuv_expected_positive_when_not_winner(self):
+        game = Game(players=2)
+        p = game.players[0]
+        p.deck.deck.clear()
+        p.deposit(0)
+        # No income, 4 landmarks left → TUV at least 4
+        self.assertGreaterEqual(tuv_expected(p, game), 4.0)
+
+    def test_landmark_cost_remaining_zero_for_winner(self):
+        """Player who has bought all four landmarks has 0 cost remaining."""
+        game = Game(players=2)
+        p = game.players[0]
+        p.deck.deck.clear()
+        for name in UpgradeCard.orangeCards:
+            card = UpgradeCard(name)
+            card.owner = p
+            p.deck.append(card)
+        self.assertEqual(_landmark_cost_remaining(p), 0)
+
+    def test_landmark_cost_remaining_all_four_when_none_owned(self):
+        """Player with no landmarks has cost remaining = sum of all four (4+10+16+22=52)."""
+        game = Game(players=2)
+        p = game.players[0]
+        p.deck.deck.clear()
+        self.assertEqual(_landmark_cost_remaining(p), 4 + 10 + 16 + 22)
+
+    def test_delta_tuv_positive_when_a_behind(self):
+        game = Game(players=2)
+        a, b = game.players[0], game.players[1]
+        a.deck.deck.clear()
+        b.deck.deck.clear()
+        a.deposit(0)
+        b.deposit(50)
+        for name in UpgradeCard.orangeCards:
+            card = UpgradeCard(name)
+            card.owner = b
+            b.deck.append(card)
+            setattr(b, UpgradeCard.orangeCards[name][2], True)
+        self.assertTrue(b.isWinner())
+        self.assertFalse(a.isWinner())
+        self.assertGreater(delta_tuv(a, b, game), 0)
+
+    def test_prob_victory_within_n_rounds_winner_is_one(self):
+        """Already-won player has probability 1.0 of being across the goal in any N."""
+        game = Game(players=2)
+        p = game.players[0]
+        for name in UpgradeCard.orangeCards:
+            card = UpgradeCard(name)
+            card.owner = p
+            p.deck.append(card)
+            setattr(p, UpgradeCard.orangeCards[name][2], True)
+        self.assertAlmostEqual(prob_victory_within_n_rounds(p, game, 1), 1.0, places=10)
+        # Winner: probability of having won within N rounds is 1.0
+        self.assertTrue(p.isWinner())
+
+    def test_prob_victory_within_n_rounds_zero_deficit_is_one(self):
+        """Player with bank >= cost_remaining has probability 1.0 (no income needed)."""
+        game = Game(players=2)
+        p = game.players[0]
+        p.deck.deck.clear()
+        p.deposit(100)
+        self.assertEqual(_landmark_cost_remaining(p), 52)
+        self.assertGreaterEqual(p.bank, 52)
+        self.assertAlmostEqual(prob_victory_within_n_rounds(p, game, 1), 1.0, places=10)
+
+    def test_pmf_mass_at_least(self):
+        pmf = {0: 0.25, 2: 0.5, 4: 0.25}
+        self.assertAlmostEqual(pmf_mass_at_least(pmf, 0), 1.0, places=10)
+        self.assertAlmostEqual(pmf_mass_at_least(pmf, 2), 0.75, places=10)
+        self.assertAlmostEqual(pmf_mass_at_least(pmf, 4), 0.25, places=10)
+        self.assertAlmostEqual(pmf_mass_at_least(pmf, 5), 0.0, places=10)
