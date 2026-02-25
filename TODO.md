@@ -2,6 +2,173 @@
 
 ## Feature Arcs
 
+### More metrics for bots to use 
+
+We've been computing "expected value" and "coverage" piecemeal, but we need a primitive we can build all future strategy primitives from. Enter the **probability mass function** (PMF) which paves the way for **expected rounds until victory** and even **likelihood of victory**, as we roll in things like variance! 
+
+#### PMF Basics
+
+The **probability mass function** (PMF) is the true primitive. It is a `dict[int, float]`
+mapping integer income amounts to probabilities. All existing summary statistics — EV,
+coverage, variance — are derived quantities. Building the PMF explicitly makes them
+exact and consistent, and enables new metrics like TUV that the old approach cannot
+express cleanly.
+
+**Key building blocks** (all live in `strategy.py`; all accept a `Game` or `players`
+parameter; none cache; stub implementations return `NotImplemented`):
+
+```
+_die_pmf(n_dice) -> dict[int, float]
+    Return the PMF for rolling n_dice d6s and summing.
+    n_dice=1 → 6 outcomes equally weighted.
+    n_dice=2 → 11 outcomes, triangular distribution.
+
+_convolve(a, b) -> dict[int, float]
+    Combine two independent PMFs by summing their outcomes.
+    result[x+y] += a[x] * b[y] for all (x, y) pairs.
+    Used to stack per-round PMFs across multiple opponents.
+
+own_turn_pmf(player, players) -> dict[int, float]
+    Income distribution for `player`'s own turn.
+    Fires: Blue cards, Green cards, Purple cards (Stadium, TVStation, BC).
+    Applies: Radio Tower reroll rule, Amusement Park bonus-turn approximation.
+    Train Station: assumes player rolls 2 dice if they own Train Station.
+
+opponent_turn_pmf(observer, roller, players) -> dict[int, float]
+    Income distribution for `observer` when `roller` takes their turn.
+    Fires: observer's Blue cards (all rolls) + observer's Red cards (roller's turn only).
+    Does NOT fire: Green, Purple, or Radio Tower belonging to the roller.
+    Radio Tower belonging to observer is ignored (roller's choice, not observer's).
+
+round_pmf(player, players) -> dict[int, float]
+    Net income for `player` over one full round (their own turn + all opponents' turns).
+    = _convolve(own_turn_pmf(player), opponent_turn_pmf(player, opp1),
+                opponent_turn_pmf(player, opp2), ...)
+    Result income values may be negative (Red card theft).
+
+pmf_mean(pmf) -> float
+    Weighted average income. Equivalent to existing portfolio_ev() once PMF is correct.
+
+pmf_variance(pmf) -> float
+    E[X^2] - E[X]^2. Useful for measuring consistency of income.
+
+pmf_percentile(pmf, p) -> float
+    Find the smallest income x such that P(income <= x) >= p.
+    p=0.5 is the median. Bots in losing positions can target higher p (need lucky outcome).
+```
+
+**Design simplifications (explicit decisions):**
+
+1. **Radio Tower**: Player rerolls iff their first roll yields 0 income (not 0 on the die —
+   0 *income* from their portfolio). This is applied inside `own_turn_pmf`. Probability
+   math: `P(income=0 with RT) = P(zero_income)²`; `P(income=x>0 with RT) = P(roll=x) +
+   P(zero_income) * P(reroll=x)`. Build `pmf_percentile` (not just `pmf_median`) so bots
+   can choose their risk threshold.
+
+2. **Amusement Park**: Doubles (matching dice: 2-2, 3-3, etc.) give the player a bonus
+   turn. Simplification: value the bonus turn as `pmf_mean(own_turn_pmf(...))` — i.e.,
+   average EV of an extra own turn. This underestimates slightly (no recursion on further
+   doubles) but avoids infinite recursion and is tractable. Exact formula via geometric
+   series would multiply EV by 6/5 (doubles prob 1/6 → mean extra turns = 1/5), but the
+   PMF approach approximates this per-outcome.
+
+3. **Dice choice**: Any player who owns Train Station is assumed to roll 2 dice. No
+   theory of mind about whether 2 dice is actually optimal. This is revisited if/when
+   a smarter dice-selection model is warranted.
+
+**Migration path**: Existing `p_hits`, `ev`, `portfolio_ev`, `coverage_value` stay as-is
+for now. PMF functions are additive — they do not replace or modify any existing function.
+Once the PMF implementation is verified to produce matching summary statistics, the
+existing functions can be reimplemented as thin wrappers (optional cleanup pass).
+
+#### ERUV, TUV, delta-TUV...
+
+**Turns Until Victory (TUV)** answers "how many more rounds does this player need, at
+current income rate, to win?" It replaces vague notions of "closeness" with a concrete
+round count that bots can compare across players.
+
+**Closed-form estimate:**
+
+```
+TUV(player) = max(
+    n_landmarks_remaining,                              # landmark-count floor
+    ceil((total_remaining_landmark_cost - bank) / ev)  # income-deficit ceiling
+)
+```
+
+The two terms represent independent binding constraints. A player who has enough coins
+but needs 3 more landmarks still needs 3 rounds minimum. A player who has no coins but
+could win in one more buy still needs to earn the money first.
+
+**Why landmarks affect the denominator, not just the ceiling**: Train Station, Shopping
+Mall, Amusement Park, and Radio Tower all change the player's income distribution. They
+don't just reduce `n_landmarks_remaining` by 1 — they shift `ev_per_turn`:
+- Amusement Park: doubles give a free turn. Exact effect multiplies rounds-until-income
+  by 5/6 (geometric series: E[extra turns per doubles] = 1/5, so mean turns per income
+  cycle = 6/5, so TUV denominator grows by factor 6/5, TUV shrinks by factor 5/6).
+- Radio Tower: reroll on 0-income turn raises EV and lowers variance; increases
+  denominator.
+- Shopping Mall: +1 coin on Bakery/Convenience Store activations; raises EV.
+- Train Station: 2-dice rolling opens up higher-value cards; changes EV distribution.
+
+This is why TUV should eventually consume `round_pmf` rather than `portfolio_ev` — the
+PMF correctly models all of these effects together.
+
+**Three TUV flavors (to be implemented in `strategy.py`):**
+
+```
+tuv_expected(player, game) -> float
+    E[turns to win] = max(n_landmarks_remaining,
+                          ceil((cost_remaining - bank) / pmf_mean(round_pmf(...))))
+    For now, uses portfolio_ev() as the denominator approximation.
+
+tuv_percentile(player, game, p=0.5) -> float
+    Use pmf_percentile(round_pmf(...), p) as the per-round income estimate.
+    p=0.5 is median TUV. p>0.5 is optimistic (lucky runs). p<0.5 is pessimistic.
+    Allows a trailing bot to ask "what TUV do I get if income goes well?" (p=0.8)
+    versus a leading bot asking "what's my worst-case TUV?" (p=0.3).
+
+tuv_variance(player, game) -> float
+    Variance in turns-to-win, derived from pmf_variance(round_pmf(...)).
+    High variance = outcome is uncertain; low variance = win/loss already determined.
+```
+
+**delta-TUV**: `tuv_expected(player_A) - tuv_expected(player_B)` — how many turns ahead
+or behind player A is relative to player B. Positive = A is losing. Negative = A is
+winning. A bot can use delta-TUV to decide whether to play aggressively (negative delta,
+can afford it) or defensively (positive delta, must catch up).
+
+**Implementation plan (when ready):**
+1. Stub `own_turn_pmf`, `opponent_turn_pmf`, `round_pmf` returning `NotImplemented`
+2. Implement `_die_pmf` and `_convolve` (pure math, easy to test)
+3. Implement `own_turn_pmf` for a player with no landmarks (baseline)
+4. Add each landmark's effect one at a time, with a test for each
+5. Implement `opponent_turn_pmf` (Blue + Red only)
+6. Implement `round_pmf` via convolution
+7. Verify `pmf_mean(round_pmf(...))` matches `portfolio_ev(...)` for simple cases
+8. Implement `tuv_expected` consuming `round_pmf`; verify against closed-form
+9. Design TUVBot: a bot that selects purchases by minimizing its own TUV (or
+   maximizing delta-TUV vs. the leading opponent). EVBot remains a pure EV machine
+   and is not modified. TUVBot, if built correctly, may approach nearly-optimal play.
+
+#### Applications once PMF is built
+
+**Tournament finish scoring**: Replace the current heuristic formula
+(`landmark_cost × 3 + card_cost × 2 + bank_coins + 25 for winner`) with
+`50.0 - round(tuv_expected(player, game), 1)`. This gives empirically-grounded
+credit for game progress: a player 2 rounds from winning scores ~48; one 10 rounds
+out scores ~40. The winner's score is naturally highest (TUV = 0 → score = 50).
+The fixed `+25` golden-snitch is no longer needed — TUV already creates the gap.
+Update `finish_score()` in `tournament.py` once `tuv_expected` is implemented and
+verified.
+
+**Migrate EV and coverage to PMF-derived**: Once `pmf_mean(round_pmf(...))` is
+verified to match `portfolio_ev(...)` for simple cases, reimplement `portfolio_ev`
+as a thin wrapper. Similarly, `coverage_value` (fraction of nonzero outcomes) is
+`1.0 - pmf[0]` from `own_turn_pmf`. These migrations are optional cleanup — the
+PMF is the source of truth, the wrappers just preserve the existing API.
+
+
 ### Graphical User Interface
 **Native GUI using Pygame (or similar Python framework)**
 
