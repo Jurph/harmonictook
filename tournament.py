@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from harmonictook import Bot, Game, NullDisplay, Player, PlayerDeck, UpgradeCard
-from bots import EVBot, ThoughtfulBot, CoverageBot  # noqa: F401 (ThoughtfulBot/CoverageBot re-exported for callers)
+from bots import EVBot, ImpatientBot, ThoughtfulBot, CoverageBot  # noqa: F401 (re-exported for callers)
 from strategy import tuv_expected
 
 
@@ -349,10 +349,10 @@ def _default_swiss_field() -> list[TournamentPlayer]:
     """12-player field: 3 of each bot type with naming convention R/T/E/C."""
     ev3 = make_evbot(3)
     return [
-        TournamentPlayer(label="Robbie", player_factory=Bot),
+        TournamentPlayer(label="Iggy",   player_factory=ImpatientBot),
         TournamentPlayer(label="Rascal", player_factory=Bot),
         TournamentPlayer(label="Rebeka", player_factory=Bot),
-        TournamentPlayer(label="Tex",    player_factory=ThoughtfulBot),
+        TournamentPlayer(label="Izzy",   player_factory=ImpatientBot),
         TournamentPlayer(label="Tim",    player_factory=ThoughtfulBot),
         TournamentPlayer(label="Tay",    player_factory=ThoughtfulBot),
         TournamentPlayer(label="Edgar",  player_factory=ev3),

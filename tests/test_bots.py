@@ -4,7 +4,7 @@
 
 import unittest
 from unittest.mock import patch
-from harmonictook import Game, Bot, TVStation, BusinessCenter, UpgradeCard
+from harmonictook import Game, Bot, Blue, TVStation, BusinessCenter, UpgradeCard
 from bots import ThoughtfulBot
 
 
@@ -121,13 +121,26 @@ class TestBots(unittest.TestCase):
         self.assertEqual(result, 'Ranch')
 
     def testThoughtfulBotChooseDice(self):
-        """Verify ThoughtfulBot returns 1 without Train Station and uses random.choice with it."""
-        thoughtful = ThoughtfulBot(name="Thoughtful")
-        self.assertEqual(thoughtful.chooseDice(), 1)
-        thoughtful.hasTrainStation = True
-        with patch('harmonictook.random.choice', return_value=2):
-            result = thoughtful.chooseDice()
-        self.assertEqual(result, 2)
+        """ThoughtfulBot picks dice by expected own-turn income.
+
+        Without Train Station: always 1.
+        With Train Station and only low-roll cards: 1 die is better (high-roll faces yield 0).
+        With Train Station and a high-roll card (Mine at [9]): 2 dice is better.
+        """
+        game = Game(players=2)
+        bot = ThoughtfulBot(name="Thoughtful")
+        bot.deck = game.players[0].deck
+        self.assertEqual(bot.chooseDice(game.players), 1)  # no Train Station
+
+        bot.hasTrainStation = True
+        # Default deck (Wheat Field [1], Bakery [2,3]): 1-die EV > 2-die EV
+        self.assertEqual(bot.chooseDice(game.players), 1)
+
+        # Add Mine (Blue, [9], payout=5): only reachable with 2 dice
+        mine = Blue("Mine", 5, 6, 5, [9])
+        mine.owner = bot
+        bot.deck.append(mine)
+        self.assertEqual(bot.chooseDice(game.players), 2)
 
     def testBotChooseActionPass(self):
         """Verify Bot.chooseAction() returns 'pass' when no cards are affordable."""
