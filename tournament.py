@@ -209,6 +209,22 @@ def _seeded_tables(players: list[TournamentPlayer], table_size: int) -> list[lis
     return tables
 
 
+def _striped_tables(players: list[TournamentPlayer], table_size: int) -> list[list[TournamentPlayer]]:
+    """Sort players by Elo descending, then stripe into tables by rank modulo n_tables.
+
+    For 12 players at table_size=4: ranks 1,4,7,10 / 2,5,8,11 / 3,6,9,12.
+    Each table spans the full Elo range, so upsets carry maximum Elo weight.
+    Highest-Elo player at each table sits last (same turn-order convention as _seeded_tables).
+    """
+    by_elo = sorted(players, key=lambda tp: -tp.elo)
+    n_tables = len(by_elo) // table_size
+    tables = []
+    for i in range(n_tables):
+        group = by_elo[i::n_tables][:table_size]
+        tables.append(list(reversed(group)))  # highest Elo → last turn order
+    return tables
+
+
 def _avoid_pair_repeats(
     tables: list[list[TournamentPlayer]],
     recent: dict[str, set[str]],
@@ -318,8 +334,8 @@ def run_swiss_tournament(
             _print_round(total_rounds, "Seeded triples", r3_results)
             print_standings(entries, total_rounds)
 
-        # Round 4 — seeded quads
-        r4_tables = _seeded_tables(entries, 4)
+        # Round 4 — striped quads: ranks 1,4,7,10 / 2,5,8,11 / 3,6,9,12
+        r4_tables = _striped_tables(entries, 4)
         r4_results = [_run_table(t, stats_path) for t in r4_tables]
         total_rounds += 1
         if verbose:
