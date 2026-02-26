@@ -6,7 +6,7 @@ import unittest
 from harmonictook import Blue, Green, Red, Stadium, TVStation, BusinessCenter, UpgradeCard, Game
 from strategy import (
     ONE_DIE_PROB, TWO_DIE_PROB, P_DOUBLES,
-    p_hits, ev, portfolio_ev, delta_ev, score_purchase_options,
+    p_hits, portfolio_ev, delta_ev, score_purchase_options,
     _die_pmf, _convolve, _landmark_cost_remaining,
     own_turn_pmf, opponent_turn_pmf, round_pmf,
     pmf_mean, pmf_variance, pmf_percentile, pmf_mass_at_least,
@@ -71,20 +71,12 @@ class TestEVBlue(unittest.TestCase):
     def test_fires_on_one_two_players(self):
         """Blue hitting [1] with 2 players, 1 die: payout=6 * (1/6) * 2 players = 2.0."""
         card = Blue("Fires On 1", 1, 1, 6, [1])
-        card.owner = self.owner
-        self.assertAlmostEqual(ev(card, self.owner, self.game.players), 2.0, places=10)
+        self.assertAlmostEqual(delta_ev(card, self.owner, self.game.players), 2.0, places=10)
 
     def test_scales_with_N(self):
         """N=3 rounds should triple the EV."""
         card = Blue("Fires On 1", 1, 1, 6, [1])
-        card.owner = self.owner
-        self.assertAlmostEqual(ev(card, self.owner, self.game.players, N=3), 6.0, places=10)
-
-    def test_upgrade_card_returns_zero(self):
-        """UpgradeCards have no direct EV; delta_ev handles them via portfolio diff."""
-        card = UpgradeCard("Train Station")
-        card.owner = self.owner
-        self.assertAlmostEqual(ev(card, self.owner, self.game.players), 0.0, places=10)
+        self.assertAlmostEqual(delta_ev(card, self.owner, self.game.players, N=3), 6.0, places=10)
 
 
 class TestEVGreen(unittest.TestCase):
@@ -98,28 +90,27 @@ class TestEVGreen(unittest.TestCase):
         self.other.deposit(100)
 
     def test_flat_payout_all_faces(self):
-        """Green hitting [1..6] with 1 die (P=1.0): ev == payout."""
+        """Green hitting [1..6] with 1 die (P=1.0): delta_ev == payout."""
         card = Green("Always Fires", 3, 1, 8, [1, 2, 3, 4, 5, 6])
-        card.owner = self.owner
-        self.assertAlmostEqual(ev(card, self.owner, self.game.players), 8.0, places=10)
+        self.assertAlmostEqual(delta_ev(card, self.owner, self.game.players), 8.0, places=10)
 
     def test_amusement_park_multiplier(self):
-        """With Amusement Park, green EV is multiplied by 1/(1-P_DOUBLES) == 6/5."""
+        """With Amusement Park, green EV is multiplied by (1 + P_DOUBLES) per the PMF model.
+
+        The PMF models Amusement Park as one conditional bonus turn, giving mean = E*(1+P_D).
+        """
         card = Green("Always Fires", 3, 1, 8, [1, 2, 3, 4, 5, 6])
-        card.owner = self.owner
         self.owner.hasAmusementPark = True
-        expected = 8.0 * (1 / (1 - P_DOUBLES))
-        self.assertAlmostEqual(ev(card, self.owner, self.game.players), expected, places=6)
+        expected = 8.0 * (1 + P_DOUBLES)
+        self.assertAlmostEqual(delta_ev(card, self.owner, self.game.players), expected, places=6)
 
     def test_convenience_store_with_shopping_mall(self):
         """Convenience Store payout is 3+1=4 when owner has Shopping Mall."""
-        # Use a real Convenience Store card so the Shopping Mall check fires
         card = Green("Convenience Store", 3, 2, 3, [4])
-        card.owner = self.owner
         self.owner.hasShoppingMall = True
         # p_hits([4], 1) = 1/6; payout = 4
         expected = 4 * (1/6)
-        self.assertAlmostEqual(ev(card, self.owner, self.game.players), expected, places=10)
+        self.assertAlmostEqual(delta_ev(card, self.owner, self.game.players), expected, places=10)
 
     def test_factory_with_matching_cards(self):
         """Factory Green multiplies payout by count of cards matching its category."""
@@ -128,16 +119,14 @@ class TestEVGreen(unittest.TestCase):
         self.owner.deck.append(Blue("Ranch", 2, 1, 1, [2]))
         self.owner.deck.append(Blue("Ranch", 2, 1, 1, [2]))
         factory = Green("Cheese Factory", 6, 5, 3, [7], 2)
-        factory.owner = self.owner
         # 2 ranches in deck, fires on [7] with 2 dice -> P = 6/36
         expected = 3 * 2 * (6/36)
-        self.assertAlmostEqual(ev(factory, self.owner, self.game.players), expected, places=10)
+        self.assertAlmostEqual(delta_ev(factory, self.owner, self.game.players), expected, places=10)
 
     def test_factory_with_no_matching_cards(self):
         """Factory with zero matching cards returns 0.0."""
         factory = Green("Cheese Factory", 6, 5, 3, [7], 2)
-        factory.owner = self.owner
-        self.assertAlmostEqual(ev(factory, self.owner, self.game.players), 0.0, places=10)
+        self.assertAlmostEqual(delta_ev(factory, self.owner, self.game.players), 0.0, places=10)
 
 
 class TestEVRed(unittest.TestCase):
@@ -153,8 +142,7 @@ class TestEVRed(unittest.TestCase):
     def test_two_players_rich_opponent(self):
         """Red hitting [1..6] with 1 die (P=1.0), payout=3, opponent bank=100: ev == 3.0."""
         card = Red("Always Steals", 4, 2, 3, [1, 2, 3, 4, 5, 6])
-        card.owner = self.owner
-        self.assertAlmostEqual(ev(card, self.owner, self.game.players), 3.0, places=10)
+        self.assertAlmostEqual(delta_ev(card, self.owner, self.game.players), 3.0, places=10)
 
     def test_three_players(self):
         """With 3 players: ev == payout * 2 opponents."""
@@ -163,15 +151,13 @@ class TestEVRed(unittest.TestCase):
         for p in game3.players:
             p.deposit(100)
         card = Red("Always Steals", 4, 2, 3, [1, 2, 3, 4, 5, 6])
-        card.owner = owner
-        self.assertAlmostEqual(ev(card, owner, game3.players), 6.0, places=10)
+        self.assertAlmostEqual(delta_ev(card, owner, game3.players), 6.0, places=10)
 
     def test_clamped_by_opponent_bank(self):
         """Opponent with bank=1 caps the steal at 1 even if payout=3."""
         self.other.bank = 1
         card = Red("Always Steals", 4, 2, 3, [1, 2, 3, 4, 5, 6])
-        card.owner = self.owner
-        self.assertAlmostEqual(ev(card, self.owner, self.game.players), 1.0, places=10)
+        self.assertAlmostEqual(delta_ev(card, self.owner, self.game.players), 1.0, places=10)
 
 
 class TestEVStadium(unittest.TestCase):
@@ -184,8 +170,7 @@ class TestEVStadium(unittest.TestCase):
         for p in game.players:
             p.deposit(100)
         card = Stadium()
-        card.owner = owner
-        self.assertAlmostEqual(ev(card, owner, game.players), 2/6, places=10)
+        self.assertAlmostEqual(delta_ev(card, owner, game.players), 2/6, places=10)
 
     def test_three_players(self):
         """3 players: net=2*2=4; ev == 4/6."""
@@ -194,8 +179,7 @@ class TestEVStadium(unittest.TestCase):
         for p in game.players:
             p.deposit(100)
         card = Stadium()
-        card.owner = owner
-        self.assertAlmostEqual(ev(card, owner, game.players), 4/6, places=10)
+        self.assertAlmostEqual(delta_ev(card, owner, game.players), 4/6, places=10)
 
 
 class TestPortfolioEV(unittest.TestCase):
@@ -230,28 +214,35 @@ class TestDeltaEV(unittest.TestCase):
         self.player.deposit(100)
         self.game.players[1].deposit(100)
 
-    def test_plain_card_no_synergy(self):
-        """delta_ev of a plain card with no factory synergy equals ev() of that card."""
+    def test_plain_card_analytical_value(self):
+        """delta_ev of a plain Blue card matches the analytically expected value.
+
+        Ranch (Blue, cat2, payout=1, hitsOn=[2]) in a 2-player game with 1 die each:
+        fires on own turn P(2)=1/6 and on opponent's turn P(2)=1/6 -> total 2/6 per round.
+        """
         card = Blue("Ranch", 2, 1, 1, [2])
-        card.owner = self.player
         self.assertAlmostEqual(
             delta_ev(card, self.player, self.game.players),
-            ev(card, self.player, self.game.players),
+            2 / 6,
             places=10,
         )
 
     def test_factory_synergy_increases_delta(self):
-        """Adding a Ranch when owner has a Cheese Factory (multiplies cat 2) boosts delta_ev."""
+        """Adding a Ranch when owner has a Cheese Factory (multiplies cat 2) boosts delta_ev.
+
+        Standalone Ranch EV = 2/6 per round (fires own + opponent turn on [2]).
+        With a Cheese Factory (payout=3, hits=[7] with 2 dice, P=6/36), adding a Ranch
+        also triggers the factory: extra 3*(6/36) = 1/2 per round. Total > 2/6.
+        """
         self.player.hasTrainStation = True  # factory hits on [7]; need 2 dice
         factory = Green("Cheese Factory", 6, 5, 3, [7], 2)
         factory.owner = self.player
         self.player.deck.append(factory)
 
         ranch = Blue("Ranch", 2, 1, 1, [2])
-        ranch.owner = self.player
-        plain_ev = ev(ranch, self.player, self.game.players)
+        standalone_ranch_ev = 2 / 6
         total_delta = delta_ev(ranch, self.player, self.game.players)
-        self.assertGreater(total_delta, plain_ev)
+        self.assertGreater(total_delta, standalone_ranch_ev)
 
     def test_upgrade_card_train_station_positive(self):
         """Train Station delta_ev > 0 when the deck has cards that benefit from 2 dice (e.g. Mine)."""
@@ -368,21 +359,18 @@ class TestEVTVStation(unittest.TestCase):
     def test_rich_opponent(self):
         """Opponent with 100 coins: steal capped at 5; P(6,1die)=1/6."""
         card = TVStation()
-        card.owner = self.owner
-        self.assertAlmostEqual(ev(card, self.owner, self.game.players), 5 * (1/6), places=10)
+        self.assertAlmostEqual(delta_ev(card, self.owner, self.game.players), 5 * (1/6), places=10)
 
     def test_poor_opponent(self):
         """Opponent with only 2 coins: steal capped at 2."""
         self.other.bank = 2
         card = TVStation()
-        card.owner = self.owner
-        self.assertAlmostEqual(ev(card, self.owner, self.game.players), 2 * (1/6), places=10)
+        self.assertAlmostEqual(delta_ev(card, self.owner, self.game.players), 2 * (1/6), places=10)
 
     def test_scales_with_N(self):
         card = TVStation()
-        card.owner = self.owner
-        base = ev(card, self.owner, self.game.players, N=1)
-        self.assertAlmostEqual(ev(card, self.owner, self.game.players, N=4), base * 4, places=10)
+        base = delta_ev(card, self.owner, self.game.players, N=1)
+        self.assertAlmostEqual(delta_ev(card, self.owner, self.game.players, N=4), base * 4, places=10)
 
 
 class TestEVBusinessCenter(unittest.TestCase):
@@ -401,35 +389,26 @@ class TestEVBusinessCenter(unittest.TestCase):
         A 'Fat Ranch' (payout=5, hits=[1]) has delta_ev=10/6 to owner (1-die, 2 players).
         Owner's Wheat Field costs 2/6 to give away. Net = 8/6 > 0.
         """
-        # Give target a high-payout Blue that hits on [1] — valuable with a single die
         fat_ranch = Blue("Fat Ranch", 2, 1, 5, [1])
         fat_ranch.owner = self.target
         self.target.deck.append(fat_ranch)
         card = BusinessCenter()
-        card.owner = self.owner
-        self.assertGreater(ev(card, self.owner, self.game.players), 0.0)
+        self.assertGreater(delta_ev(card, self.owner, self.game.players), 0.0)
 
     def test_spite_filter_prefers_less_synergistic_give(self):
         """BC give-card selection avoids handing target a Ranch that feeds their Cheese Factory."""
-        # Target has a Cheese Factory (multiplies cat 2 = Ranch)
         factory = Green("Cheese Factory", 6, 5, 3, [7], 2)
         factory.owner = self.target
         self.target.deck.append(factory)
-        # Also give target a high-value card so the swap is worth making
         mine = Blue("Mine", 5, 6, 5, [9])
         mine.owner = self.target
         self.target.deck.append(mine)
-        # Owner has a Ranch (cat 2) and a low-EV Wheat Field copy
         ranch = Blue("Ranch", 2, 1, 1, [2])
         ranch.owner = self.owner
         self.owner.deck.append(ranch)
 
         card = BusinessCenter()
-        card.owner = self.owner
-
-        # The spite filter should prefer to give away something other than the Ranch
-        # Verify BC EV is computed (non-zero and doesn't crash)
-        result = ev(card, self.owner, self.game.players)
+        result = delta_ev(card, self.owner, self.game.players)
         self.assertIsInstance(result, float)
         self.assertGreaterEqual(result, 0.0)
 
@@ -437,19 +416,15 @@ class TestEVBusinessCenter(unittest.TestCase):
         """With no valid opponents (only owner), BC returns 0."""
         game1 = Game(players=2)
         owner = game1.players[0]
-        # Clear target's deck so no swappable cards exist
         game1.players[1].deck.deck.clear()
         card = BusinessCenter()
-        card.owner = owner
-        self.assertAlmostEqual(ev(card, owner, game1.players), 0.0, places=10)
+        self.assertAlmostEqual(delta_ev(card, owner, game1.players), 0.0, places=10)
 
     def test_no_own_swappable_cards_returns_zero(self):
         """If owner has only UpgradeCards, BC returns 0 (nothing to give)."""
-        # Clear owner's deck of regular cards
         self.owner.deck.deck.clear()
         card = BusinessCenter()
-        card.owner = self.owner
-        self.assertAlmostEqual(ev(card, self.owner, self.game.players), 0.0, places=10)
+        self.assertAlmostEqual(delta_ev(card, self.owner, self.game.players), 0.0, places=10)
 
 
 class TestEVBot(unittest.TestCase):

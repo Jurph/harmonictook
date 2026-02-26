@@ -134,80 +134,6 @@ def p_hits(hitsOn: list[int], num_dice: int) -> float:
     return sum(prob.get(v, 0.0) for v in hitsOn)
 
 
-def ev(card: Card, owner: Player, players: list[Player], N: int = 1) -> float:
-    """Return the expected coins gained per N rounds from owning card.
-
-    Dispatches to type-specific helpers. UpgradeCard always returns 0.0
-    (use delta_ev to value upgrades via portfolio difference).
-    """
-    if isinstance(card, UpgradeCard):
-        return 0.0
-    if isinstance(card, Blue):
-        return _ev_blue(card, owner, players, N)
-    if isinstance(card, Green):
-        return _ev_green(card, owner, players, N)
-    if isinstance(card, Red):
-        return _ev_red(card, owner, players, N)
-    if isinstance(card, Stadium):
-        return _ev_stadium(card, owner, players, N)
-    if isinstance(card, TVStation):
-        return _ev_tvstation(card, owner, players, N)
-    if isinstance(card, BusinessCenter):
-        return _ev_businesscenter(card, owner, players, N)
-    return 0.0
-
-
-def _ev_blue(card: Blue, owner: Player, players: list[Player], N: int) -> float:
-    """EV for a Blue card: fires on every player's roll."""
-    total_per_round = card.payout * sum(
-        p_hits(card.hitsOn, _num_dice(p)) for p in players
-    )
-    return N * total_per_round
-
-
-def _ev_green(card: Green, owner: Player, players: list[Player], N: int) -> float:
-    """EV for a Green card: fires only on the owner's roll."""
-    n_dice = _num_dice(owner)
-    turn_mult = _turn_multiplier(owner)
-    hit_prob = p_hits(card.hitsOn, n_dice)
-
-    if getattr(card, "multiplies", None) is not None:
-        count = _count_category(owner, card.multiplies)
-        return N * card.payout * count * hit_prob * turn_mult
-    payout_eff = card.payout
-    if owner.hasShoppingMall and card.name == "Convenience Store":
-        payout_eff += 1
-    return N * payout_eff * hit_prob * turn_mult
-
-
-def _ev_red(card: Red, owner: Player, players: list[Player], N: int) -> float:
-    """EV for a Red card: fires on each other player's roll, bounded by their bank."""
-    total_per_round = 0.0
-    for p in players:
-        if p is owner:
-            continue
-        total_per_round += min(card.payout, p.bank) * p_hits(card.hitsOn, _num_dice(p))
-    return N * total_per_round
-
-
-def _ev_stadium(card: Stadium, owner: Player, players: list[Player], N: int) -> float:
-    """EV for Stadium: net gain = payout * (len(players)-1) per trigger on a 6."""
-    net_per_trigger = card.payout * (len(players) - 1)
-    hit_prob = p_hits([6], _num_dice(owner))
-    turn_mult = _turn_multiplier(owner)
-    return N * net_per_trigger * hit_prob * turn_mult
-
-
-def _ev_tvstation(card: TVStation, owner: Player, players: list[Player], N: int) -> float:
-    """EV for TV Station: steal up to 5 from the richest opponent when owner rolls a 6."""
-    opponents = [p for p in players if p is not owner]
-    if not opponents:
-        return 0.0
-    max_bank = max(p.bank for p in opponents)
-    steal = min(5, max_bank)
-    return steal * p_hits([6], _num_dice(owner)) * _turn_multiplier(owner) * N
-
-
 def _ev_businesscenter(card: BusinessCenter, owner: Player, players: list[Player], N: int) -> float:
     """EV for Business Center: optimal card swap on a 6.
 
@@ -239,11 +165,11 @@ def _ev_businesscenter(card: BusinessCenter, owner: Player, players: list[Player
         # Best card to take: maximises delta_ev to owner (factory synergies included)
         best_gain = max(delta_ev(c, owner, players, 1) for c in target_cards)
 
-        # Best card to give: bottom-4 own cards by EV, then least valuable to target
-        own_by_ev = sorted(own_cards, key=lambda c: ev(c, owner, players, 1))
+        # Best card to give: bottom-4 own cards by marginal EV, then least valuable to target
+        own_by_ev = sorted(own_cards, key=lambda c: delta_ev(c, owner, players, 1))
         bottom_4 = own_by_ev[:4]
         best_give = min(bottom_4, key=lambda c: delta_ev(c, target, players, 1))
-        give_loss = ev(best_give, owner, players, 1)
+        give_loss = delta_ev(best_give, owner, players, 1)
 
         net = best_gain - give_loss
         if net > best_net:
@@ -251,49 +177,6 @@ def _ev_businesscenter(card: BusinessCenter, owner: Player, players: list[Player
 
     return best_net * p_hits([6], _num_dice(owner)) * _turn_multiplier(owner) * N
 
-
-def _radio_tower_gain(player: Player, players: list[Player], N: int) -> float:
-    """EV gain per N rounds from Radio Tower: option value of rerolling a bad roll.
-
-    Optimal strategy: after rolling, reroll if V(r) < E_own (expected own-turn income),
-    since the expected value of a reroll is exactly E_own.
-
-    E_with_RT = Σ_r  P(r) × max(V(r), E_own)
-    gain/turn  = (E_with_RT − E_own) × turn_multiplier
-
-    V(r) covers own-turn income only: Blue (own payout), Green, Stadium, TVStation.
-    Red is excluded — it fires on opponents' turns and is unaffected by the owner's reroll.
-    BusinessCenter is excluded (its income is a swap, not a coin amount).
-    """
-    num_dice = _num_dice(player)
-    prob_table = ONE_DIE_PROB if num_dice == 1 else TWO_DIE_PROB
-
-    def own_roll_income(r: int) -> float:
-        total = 0.0
-        for card in player.deck.deck:
-            if r not in card.hitsOn:
-                continue
-            if isinstance(card, Blue):
-                total += card.payout
-            elif isinstance(card, Green):
-                if card.multiplies:
-                    total += card.payout * _count_category(player, card.multiplies)
-                else:
-                    payout = card.payout
-                    if player.hasShoppingMall and card.name == "Convenience Store":
-                        payout += 1
-                    total += payout
-            elif isinstance(card, Stadium):
-                total += card.payout * (len(players) - 1)
-            elif isinstance(card, TVStation):
-                opponents = [p for p in players if p is not player]
-                if opponents:
-                    total += min(5, max(p.bank for p in opponents))
-        return total
-
-    e_own = sum(prob * own_roll_income(r) for r, prob in prob_table.items())
-    e_with_rt = sum(prob * max(own_roll_income(r), e_own) for r, prob in prob_table.items())
-    return (e_with_rt - e_own) * _turn_multiplier(player) * N
 
 
 def _train_station_gain(
@@ -321,9 +204,9 @@ def _train_station_gain(
     old_ts = player.hasTrainStation
     try:
         player.hasTrainStation = False
-        evs_1die = [ev(c, player, players, 1) for c in one_die_cards]
+        evs_1die = [delta_ev(c, player, players, 1) for c in one_die_cards]
         player.hasTrainStation = True
-        evs_2die = [ev(c, player, players, 1) for c in two_die_cards]
+        evs_2die = [delta_ev(c, player, players, 1) for c in two_die_cards]
     finally:
         player.hasTrainStation = old_ts
 
@@ -336,31 +219,15 @@ def _train_station_gain(
     return max(0.0, med_2die - med_1die) * N
 
 
-def _factory_synergy_gain(new_card: Card, player: Player, players: list[Player], N: int) -> float:
-    """Return the EV boost to existing factory cards caused by adding new_card to player's deck.
-
-    For each Green factory in player's deck where card.multiplies == new_card.category,
-    adds N * card.payout * p_hits(card.hitsOn, _num_dice(player)) * _turn_multiplier(player).
-    """
-    total = 0.0
-    new_cat = getattr(new_card, "category", None)
-    if new_cat is None:
-        return total
-    for c in player.deck.deck:
-        if isinstance(c, Green) and getattr(c, "multiplies", None) == new_cat:
-            total += (
-                c.payout
-                * 1
-                * p_hits(c.hitsOn, _num_dice(player))
-                * _turn_multiplier(player)
-                * N
-            )
-    return total
-
 
 def portfolio_ev(player: Player, players: list[Player], N: int = 1) -> float:
-    """Return the total EV of all cards in player's deck over N rounds."""
-    return sum(ev(card, player, players, N) for card in player.deck.deck)
+    """Return expected total income over N rounds, derived from round_pmf.
+
+    Note: Amusement Park uses the PMF one-bonus-turn approximation (mean = E*(1+P_D)),
+    which differs slightly from the geometric-series formula (E/(1-P_D)) used in older
+    per-card EV calculations. The PMF value is the canonical one.
+    """
+    return N * pmf_mean(round_pmf(player, players))
 
 
 def coverage_value(card: Card, owner: Player, players: list[Player]) -> float:
@@ -456,28 +323,39 @@ def delta_ev(
 ) -> float:
     """Return the marginal EV gain from adding card to player's deck.
 
-    For UpgradeCards: temporarily sets the flag on player, diffs portfolio_ev, restores via finally.
-    For factory-synergy cards: adds _factory_synergy_gain on top of direct ev.
-    When market_cards is provided, Train Station uses forward-looking valuation instead of
-    portfolio-diff (portfolio-diff undervalues it on a starting deck with no 2-die cards).
+    For income cards (Blue, Green, Red, Purple): temporarily appends card to the deck,
+    diffs pmf_mean(round_pmf), then pops it back off. Factory synergies and Shopping Mall
+    bonuses are captured automatically because round_pmf sees the full deck.
+    Uses pop() rather than remove() to avoid Card.__eq__ ambiguity on duplicate sortvalues.
+
+    For UpgradeCards: temporarily sets the attribute flag, diffs pmf_mean(round_pmf),
+    restores via finally. Train Station with market_cards uses the forward-looking
+    _train_station_gain heuristic (PMF diff undervalues it on a deck with no 2-die cards yet).
+
+    BusinessCenter is dispatched to _ev_businesscenter (swap value, not coin income).
     """
+    if isinstance(card, BusinessCenter):
+        return _ev_businesscenter(card, player, players, N)
     if isinstance(card, UpgradeCard):
-        if card.name == "Radio Tower":
-            return _radio_tower_gain(player, players, N)
         if card.name == "Train Station" and market_cards is not None:
             return _train_station_gain(player, players, market_cards, N)
         attr = UpgradeCard.orangeCards[card.name][2]
         old_val = getattr(player, attr, False)
-        without_ev = portfolio_ev(player, players, N)
         try:
+            setattr(player, attr, False)
+            without_ev = pmf_mean(round_pmf(player, players))
             setattr(player, attr, True)
-            with_ev = portfolio_ev(player, players, N)
+            with_ev = pmf_mean(round_pmf(player, players))
         finally:
             setattr(player, attr, old_val)
-        return with_ev - without_ev
-    direct = ev(card, player, players, N)
-    synergy = _factory_synergy_gain(card, player, players, N)
-    return direct + synergy
+        return N * (with_ev - without_ev)
+    without_ev = pmf_mean(round_pmf(player, players))
+    player.deck.deck.append(card)
+    try:
+        with_ev = pmf_mean(round_pmf(player, players))
+    finally:
+        player.deck.deck.pop()
+    return N * (with_ev - without_ev)
 
 
 # ---------------------------------------------------------------------------
@@ -509,7 +387,7 @@ def own_turn_pmf(player: Player, players: list[Player]) -> dict[int, float]:
         income = _own_turn_income(player, players, roll)
         base[income] = base.get(income, 0.0) + prob
 
-    # Optimal Radio Tower strategy: reroll if income < E_own (consistent with _radio_tower_gain).
+    # Optimal Radio Tower strategy: reroll if income < E_own.
     # P(final=x) = P(x) * (I(x >= mu) + P_reroll), where P_reroll = sum of P(x) for x < mu.
     if getattr(player, "hasRadioTower", False):
         mu = pmf_mean(base)
