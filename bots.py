@@ -24,7 +24,55 @@ from strategy import (
     _landmark_cost_remaining,
     _n_landmarks_remaining,
     _own_turn_coverage,
+    _prob_win_in_n_rounds,
 )
+
+
+def _roll_income(player: Bot, roll: int) -> int:
+    """Coin income from Blue and Green cards in player's deck on a given roll."""
+    return sum(
+        card.payout
+        for card in player.deck.deck
+        if roll in card.hitsOn and isinstance(card, (Blue, Green))
+    )
+
+
+def _card_variance(player: Bot, card: Card, players: list) -> float:
+    """Income variance of round_pmf after temporarily adding card (used as tiebreaker)."""
+    if isinstance(card, UpgradeCard):
+        attr = UpgradeCard.orangeCards[card.name][2]
+        old_val = getattr(player, attr, False)
+        setattr(player, attr, True)
+        try:
+            return pmf_variance(round_pmf(player, players))
+        finally:
+            setattr(player, attr, old_val)
+    else:
+        player.deck.deck.append(card)
+        try:
+            return pmf_variance(round_pmf(player, players))
+        finally:
+            player.deck.deck.pop()
+
+
+def _eruv_for(player: Bot, players: list) -> float:
+    """Compute ERUV for any player given a players list (no Game required)."""
+    n_lm = _n_landmarks_remaining(player)
+    cost = _landmark_cost_remaining(player)
+    income = pmf_mean(round_pmf(player, players))
+    if income <= 0:
+        return float(n_lm)
+    deficit = max(0, cost - player.bank)
+    return float(max(n_lm, math.ceil(deficit / income)))
+
+
+def _leader_n(players: list) -> int:
+    """N = max(1, floor(min_ERUV_across_players) - 1): MarathonBot's pace target."""
+    active = [p for p in players if not p.isWinner()]
+    if not active:
+        return 1
+    min_eruv = min(_eruv_for(p, players) for p in active)
+    return max(1, math.floor(min_eruv) - 1)
 
 
 def _dice_by_ev(player: Bot, players: list) -> int:
@@ -360,3 +408,169 @@ class ImpatientBot(Bot):
                 return pmf_variance(round_pmf(self, players))
             finally:
                 self.deck.deck.pop()
+
+
+class MarathonBot(Bot):
+    """Bot that maximizes P(win in N rounds), N = max(1, floor(leader_ERUV) - 1).
+
+    Paces to win one round ahead of the current leader — whether that's itself or an
+    opponent. Always buys landmarks when affordable (they are the win condition).
+    Coasts (passes) when saving coins for a landmark beats buying an income card.
+    Targets the lowest-ERUV opponent for theft: always hits the most dangerous player.
+
+    chooseAction and chooseReroll approximate N from [self] (no game reference there).
+    chooseCard and chooseBusinessCenterSwap use game.players when available.
+    """
+
+    # ------------------------------------------------------------------
+    # Public decision methods
+    # ------------------------------------------------------------------
+
+    def chooseDice(self, players: list | None = None) -> int:
+        """Pick the dice count that maximizes P(win in N)."""
+        use_players = players or [self]
+        if not self.hasTrainStation:
+            return 1
+        n = _leader_n(use_players)
+        old = self.hasTrainStation
+        try:
+            self.hasTrainStation = False
+            p1 = _prob_win_in_n_rounds(self, use_players, n)
+            self.hasTrainStation = True
+            p2 = _prob_win_in_n_rounds(self, use_players, n)
+        finally:
+            self.hasTrainStation = old
+        return 2 if p2 >= p1 else 1
+
+    def chooseReroll(self, last_roll: int | None = None) -> bool:
+        """Two-regime reroll: sprint if N=1 (reroll unless income covers deficit),
+        marathon if N>1 (reroll if income falls in the bottom third of outcomes).
+
+        N is approximated from own ERUV using [self] as players.
+        """
+        if not self.hasRadioTower or last_roll is None:
+            return False
+        income = _roll_income(self, last_roll)
+        n = _leader_n([self])
+        if n == 1:
+            deficit = max(0, _landmark_cost_remaining(self) - self.bank)
+            return income < deficit
+        incomes = sorted(_roll_income(self, x) for x in range(1, 13))
+        return income <= incomes[3]  # bottom third of 12 outcomes
+
+    def chooseAction(self, availableCards) -> str:
+        """Buy a landmark if affordable; buy income card only if P(win in N) improves; else coast."""
+        options = availableCards.names(maxcost=self.bank)
+        if not options:
+            return 'pass'
+        players = [self]
+        # Landmarks are the win condition — always buy one if it's within reach.
+        for name in options:
+            card = next((c for c in availableCards.deck if c.name == name), None)
+            if card is not None and isinstance(card, UpgradeCard):
+                return 'buy'
+        # Income card: only buy if doing so raises P(win in N) above coasting.
+        n = _leader_n(players)
+        base_pwn = _prob_win_in_n_rounds(self, players, n)
+        for name in options:
+            card = next((c for c in availableCards.deck if c.name == name), None)
+            if card is not None and self._pwn_after_buy(card, players, n) > base_pwn:
+                return 'buy'
+        return 'pass'
+
+    def chooseCard(self, options: list, game: 'Game | None' = None) -> str | None:
+        """Return the card that maximises P(win in N). Tiebreak: lower income variance."""
+        if not options:
+            return None
+        names = [o.name if isinstance(o, Card) else o for o in options]
+        players = list(game.players) if game else [self]
+        n = _leader_n(players)
+
+        cards_by_name: dict[str, Card] = {}
+        for o in options:
+            if isinstance(o, Card):
+                cards_by_name[o.name] = o
+        if game:
+            for c in game.market.deck:
+                if c.name in set(names) and c.name not in cards_by_name:
+                    cards_by_name[c.name] = c
+
+        if not cards_by_name:
+            return random.choice(names)
+
+        best_name: str | None = None
+        best_pwn = -1.0
+        best_var = float('inf')
+        for name in names:
+            card = cards_by_name.get(name)
+            if card is None:
+                continue
+            p = self._pwn_after_buy(card, players, n)
+            v = _card_variance(self, card, players)
+            if p > best_pwn or (p == best_pwn and v < best_var):
+                best_pwn, best_var, best_name = p, v, name
+        return best_name if best_name is not None else random.choice(names)
+
+    def chooseTarget(self, players: list) -> 'Bot | None':
+        """Steal from the opponent with the lowest ERUV; tiebreak on richest."""
+        valid = [p for p in players if not p.isrollingdice]
+        if not valid:
+            return None
+        return min(valid, key=lambda p: (_eruv_for(p, players), -p.bank))
+
+    def chooseBusinessCenterSwap(
+        self, target, my_swappable: list, their_swappable: list
+    ) -> 'tuple[Card, Card] | None':
+        """Give the card whose removal hurts P(win in N) least; take the card that helps most."""
+        if not my_swappable or not their_swappable:
+            return None
+        players = [self]
+        n = _leader_n(players)
+        card_to_give = max(my_swappable, key=lambda c: self._pwn_after_remove(c, players, n))
+        card_to_take = max(their_swappable, key=lambda c: self._pwn_after_add(c, players, n))
+        return (card_to_give, card_to_take)
+
+    # ------------------------------------------------------------------
+    # Private helpers — P(win in N) mutation variants
+    # ------------------------------------------------------------------
+
+    def _pwn_after_buy(self, card: Card, players: list, n: int) -> float:
+        """P(win in N) after buying card: deduct cost, mutate deck/flags, compute, restore."""
+        self.bank -= card.cost
+        if isinstance(card, UpgradeCard):
+            attr = UpgradeCard.orangeCards[card.name][2]
+            old_val = getattr(self, attr, False)
+            setattr(self, attr, True)
+            self.deck.deck.append(card)
+            try:
+                return _prob_win_in_n_rounds(self, players, n)
+            finally:
+                self.deck.deck.pop()
+                setattr(self, attr, old_val)
+                self.bank += card.cost
+        else:
+            self.deck.deck.append(card)
+            try:
+                return _prob_win_in_n_rounds(self, players, n)
+            finally:
+                self.deck.deck.pop()
+                self.bank += card.cost
+
+    def _pwn_after_add(self, card: Card, players: list, n: int) -> float:
+        """P(win in N) after adding card with no payment (Business Center take)."""
+        self.deck.deck.append(card)
+        try:
+            return _prob_win_in_n_rounds(self, players, n)
+        finally:
+            self.deck.deck.pop()
+
+    def _pwn_after_remove(self, card: Card, players: list, n: int) -> float:
+        """P(win in N) after removing card from deck (Business Center give)."""
+        idx = next((i for i, c in enumerate(self.deck.deck) if c is card), None)
+        if idx is None:
+            return _prob_win_in_n_rounds(self, players, n)
+        removed = self.deck.deck.pop(idx)
+        try:
+            return _prob_win_in_n_rounds(self, players, n)
+        finally:
+            self.deck.deck.insert(idx, removed)

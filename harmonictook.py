@@ -747,7 +747,7 @@ def setPlayers(players: int | None = None, bots: int = 0, humans: int = 0) -> li
     # Lazy import — bots.py imports harmonictook (for Bot, Player, etc.) and strategy
     # (for EV functions), so importing at module level would create a circular dependency.
     # By the time setPlayers() is called the module is fully loaded and this resolves cleanly.
-    from bots import ThoughtfulBot, EVBot, CoverageBot, ImpatientBot  # noqa: PLC0415
+    from bots import ThoughtfulBot, EVBot, CoverageBot, ImpatientBot, MarathonBot  # noqa: PLC0415
     playerlist = []
     if bots > 0 or humans > 0:
         total = bots + humans
@@ -766,6 +766,7 @@ def setPlayers(players: int | None = None, bots: int = 0, humans: int = 0) -> li
         _PLAYER_OPTIONS = [
             "Human",
             "Tough Bot (EV-ranked strategy)",
+            "Marathon Bot (P(win in N) strategy)",
             "Impatient Bot (ERUV-minimising strategy)",
             "Medium Bot (heuristic preferences)",
             "Coverage Bot (coverage-maximising strategy)",
@@ -782,6 +783,8 @@ def setPlayers(players: int | None = None, bots: int = 0, humans: int = 0) -> li
                 playername = input("What's the bot's name? ")
                 if choice == "Tough Bot (EV-ranked strategy)":
                     playerlist.append(EVBot(name=str(playername)))
+                elif choice == "Marathon Bot (P(win in N) strategy)":
+                    playerlist.append(MarathonBot(name=str(playername)))
                 elif choice == "Impatient Bot (ERUV-minimising strategy)":
                     playerlist.append(ImpatientBot(name=str(playername)))
                 elif choice == "Medium Bot (heuristic preferences)":
@@ -791,7 +794,7 @@ def setPlayers(players: int | None = None, bots: int = 0, humans: int = 0) -> li
                 elif choice == "Trivial Bot (random choices)":
                     playerlist.append(Bot(name=str(playername)))
                 else:  # "Pick a bot for me"
-                    playerlist.append(random.choice([EVBot, ImpatientBot, ThoughtfulBot, CoverageBot, Bot])(name=str(playername)))
+                    playerlist.append(random.choice([EVBot, MarathonBot, ImpatientBot, ThoughtfulBot, CoverageBot, Bot])(name=str(playername)))
             if len(playerlist) == 4:
                 break
             elif len(playerlist) >= 2:

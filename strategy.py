@@ -509,6 +509,28 @@ def pmf_mass_at_least(pmf: dict[int, float], threshold: int) -> float:
     return sum(p for x, p in pmf.items() if x >= threshold)
 
 
+def _prob_win_in_n_rounds(
+    player: Player, players: list[Player], n_rounds: int
+) -> float:
+    """Core computation: P(cumulative n_rounds income >= deficit), given a players list.
+
+    Shared by prob_victory_within_n_rounds (Game wrapper) and MarathonBot (no Game).
+    Returns 1.0 if player has already won or deficit is already met; 0.0 if n_rounds=0.
+    """
+    if player.isWinner():
+        return 1.0
+    deficit = max(0, _landmark_cost_remaining(player) - player.bank)
+    if deficit <= 0:
+        return 1.0
+    if n_rounds <= 0:
+        return 0.0
+    rp = round_pmf(player, players)
+    acc: dict[int, float] = {0: 1.0}
+    for _ in range(n_rounds):
+        acc = _convolve(acc, rp)
+    return pmf_mass_at_least(acc, deficit)
+
+
 def prob_victory_within_n_rounds(
     player: Player, game: Game, n_rounds: int
 ) -> float:
@@ -517,18 +539,9 @@ def prob_victory_within_n_rounds(
     Uses the n-fold convolution of round_pmf: "how sure are we that we'll be across
     the goal line in N rounds?" Assumes we only need to earn deficit = cost_remaining - bank;
     does not enforce the landmark-count floor (caller may require n_rounds >= n_landmarks).
-    Returns 0.0 if player has already won.
+    Returns 1.0 if player has already won.
     """
-    if player.isWinner():
-        return 1.0
-    deficit = max(0, _landmark_cost_remaining(player) - player.bank)
-    if deficit <= 0:
-        return 1.0
-    rp = round_pmf(player, game.players)
-    acc: dict[int, float] = {0: 1.0}
-    for _ in range(n_rounds):
-        acc = _convolve(acc, rp)
-    return pmf_mass_at_least(acc, deficit)
+    return _prob_win_in_n_rounds(player, game.players, n_rounds)
 
 
 # ---------------------------------------------------------------------------

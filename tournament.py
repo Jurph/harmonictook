@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from harmonictook import Bot, Game, NullDisplay, Player, PlayerDeck, UpgradeCard
-from bots import EVBot, ImpatientBot, ThoughtfulBot, CoverageBot  # noqa: F401 (re-exported for callers)
+from bots import EVBot, ImpatientBot, MarathonBot, ThoughtfulBot, CoverageBot  # noqa: F401 (re-exported for callers)
 from strategy import tuv_expected
 
 
@@ -349,18 +349,18 @@ def _default_swiss_field() -> list[TournamentPlayer]:
     """12-player field: 3 of each bot type with naming convention R/T/E/C."""
     ev3 = make_evbot(3)
     return [
-        TournamentPlayer(label="Iggy",   player_factory=ImpatientBot),
-        TournamentPlayer(label="Rascal", player_factory=Bot),
-        TournamentPlayer(label="Rebeka", player_factory=Bot),
-        TournamentPlayer(label="Izzy",   player_factory=ImpatientBot),
-        TournamentPlayer(label="Tim",    player_factory=ThoughtfulBot),
-        TournamentPlayer(label="Tay",    player_factory=ThoughtfulBot),
-        TournamentPlayer(label="Edgar",  player_factory=ev3),
-        TournamentPlayer(label="Ellen",  player_factory=ev3),
-        TournamentPlayer(label="Elija",  player_factory=ev3),
-        TournamentPlayer(label="Chadd",  player_factory=CoverageBot),
-        TournamentPlayer(label="Carli",  player_factory=CoverageBot),
-        TournamentPlayer(label="Carol",  player_factory=CoverageBot),
+        TournamentPlayer(label="Rascal",  player_factory=Bot),
+        TournamentPlayer(label="Rebeka",  player_factory=Bot),
+        TournamentPlayer(label="Tim",     player_factory=ThoughtfulBot),
+        TournamentPlayer(label="Tay",     player_factory=ThoughtfulBot),
+        TournamentPlayer(label="Edgar",   player_factory=ev3),
+        TournamentPlayer(label="Ellen",   player_factory=ev3),
+        TournamentPlayer(label="Chadd",   player_factory=CoverageBot),
+        TournamentPlayer(label="Carli",   player_factory=CoverageBot),
+        TournamentPlayer(label="Iggy",    player_factory=ImpatientBot),
+        TournamentPlayer(label="Izzy",    player_factory=ImpatientBot),
+        TournamentPlayer(label="Madison", player_factory=MarathonBot),
+        TournamentPlayer(label="Michael", player_factory=MarathonBot),
     ]
 
 
