@@ -13,7 +13,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import random
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -153,7 +155,47 @@ def print_report(bue_name: str, results: dict[int, tuple[int, int]]) -> None:
     print(f"  Overall:   {total_wins}W / {total_games - total_wins}L  ({total_pct:.1f}%)\n")
 
 
-def _run_table(players: list[TournamentPlayer], stats_path: str | None = None) -> RoundResult:
+def _write_game_record(
+    records_path: str,
+    game: Game,
+    instances: dict[str, Player],
+    scores: dict[str, int],
+) -> None:
+    """Append one JSONL record describing the end state of a completed game.
+
+    Each line is a compact JSON object with top-level game metadata and a 'players'
+    list. Landmarks are separated from income cards so downstream queries can filter
+    on upgrade ownership without knowing which card names are upgrades.
+    """
+    player_records = []
+    for label, player in instances.items():
+        landmarks = sorted(c.name for c in player.deck.deck if isinstance(c, UpgradeCard))
+        income_cards = [c.name for c in player.deck.deck if not isinstance(c, UpgradeCard)]
+        deck_counts = dict(Counter(income_cards))
+        player_records.append({
+            "label": label,
+            "bot_type": type(player).__name__,
+            "winner": player is game.winner,
+            "score": scores[label],
+            "eruv": tuv_expected(player, game),
+            "bank": player.bank,
+            "landmarks": landmarks,
+            "deck": deck_counts,
+        })
+    record = {
+        "turns": game.turn_number,
+        "n_players": len(game.players),
+        "players": player_records,
+    }
+    with open(records_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, separators=(",", ":")) + "\n")
+
+
+def _run_table(
+    players: list[TournamentPlayer],
+    stats_path: str | None = None,
+    records_path: str | None = None,
+) -> RoundResult:
     """Run one game; update Elo and scores in place; return the round result."""
     n = len(players)
     k_prime = _ELO_K / (n - 1)
@@ -173,6 +215,9 @@ def _run_table(players: list[TournamentPlayer], stats_path: str | None = None) -
         player_scores = "  ".join(f"{tp.label}={scores[tp.label]}" for tp in players)
         with open(stats_path, "a", encoding="utf-8") as f:
             f.write(f"turns={game.turn_number}  n={n}  {player_scores}\n")
+
+    if records_path is not None:
+        _write_game_record(records_path, game, instances, scores)
 
     # Accumulate Elo deltas using pre-game ratings (all pairs computed against initial Elo)
     deltas: dict[str, float] = {tp.label: 0.0 for tp in players}
@@ -261,6 +306,7 @@ def run_swiss_tournament(
     n_days: int = 1,
     verbose: bool = True,
     stats_path: str | None = None,
+    records_path: str | None = None,
 ) -> list[TournamentPlayer]:
     """Run n_days x 4-round Swiss tournament; return players sorted by final Elo.
 
@@ -303,7 +349,7 @@ def run_swiss_tournament(
             r1_tables = [shuffled[i:i + 2] for i in range(0, len(shuffled), 2)]
         else:
             r1_tables = _seeded_tables(entries, 2)
-        r1_results = [_run_table(t, stats_path) for t in r1_tables]
+        r1_results = [_run_table(t, stats_path, records_path) for t in r1_tables]
         total_rounds += 1
 
         # Build same-day round-1 opponent map for deconflict in round 2
@@ -320,7 +366,7 @@ def run_swiss_tournament(
         # Round 2 — seeded pairs, avoid same-day round-1 rematches
         r2_tables = _seeded_tables(entries, 2)
         r2_tables = _avoid_pair_repeats(r2_tables, recent)
-        r2_results = [_run_table(t, stats_path) for t in r2_tables]
+        r2_results = [_run_table(t, stats_path, records_path) for t in r2_tables]
         total_rounds += 1
         if verbose:
             _print_round(total_rounds, "Seeded pairs", r2_results)
@@ -328,7 +374,7 @@ def run_swiss_tournament(
 
         # Round 3 — seeded triples
         r3_tables = _seeded_tables(entries, 3)
-        r3_results = [_run_table(t, stats_path) for t in r3_tables]
+        r3_results = [_run_table(t, stats_path, records_path) for t in r3_tables]
         total_rounds += 1
         if verbose:
             _print_round(total_rounds, "Seeded triples", r3_results)
@@ -336,7 +382,7 @@ def run_swiss_tournament(
 
         # Round 4 — striped quads: ranks 1,4,7,10 / 2,5,8,11 / 3,6,9,12
         r4_tables = _striped_tables(entries, 4)
-        r4_results = [_run_table(t, stats_path) for t in r4_tables]
+        r4_results = [_run_table(t, stats_path, records_path) for t in r4_tables]
         total_rounds += 1
         if verbose:
             _print_round(total_rounds, "Seeded quads", r4_results)
@@ -378,11 +424,13 @@ def main() -> None:
                         metavar="N", help="EV horizons to compare in round-robin (default: 1 3 5 7)")
     parser.add_argument("--stats", metavar="FILE", default=None,
                         help="append per-game stats (turns, n, scores) to FILE")
+    parser.add_argument("--records", metavar="FILE", default=None,
+                        help="append per-game JSONL records (decks, ERUV, bot type) to FILE")
     args = parser.parse_args()
 
     if args.swiss:
         entries = _default_swiss_field()
-        run_swiss_tournament(entries, n_days=args.days, stats_path=args.stats)
+        run_swiss_tournament(entries, n_days=args.days, stats_path=args.stats, records_path=args.records)
     elif args.round_robin:
         named_factories = [(f"EVBot(N={n})", make_evbot(n)) for n in args.horizons]
         results = run_round_robin(named_factories, n_games=args.games)
