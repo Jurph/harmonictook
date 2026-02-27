@@ -66,13 +66,26 @@ def _eruv_for(player: Bot, players: list) -> float:
     return float(max(n_lm, math.ceil(deficit / income)))
 
 
+_MARATHON_TARGET: dict[int, int] = {2: 20, 3: 17, 4: 17}
+_MARATHON_TARGET_DEFAULT: int = 17
+
+
 def _leader_n(players: list) -> int:
-    """N = max(1, floor(min_ERUV_across_players) - 1): MarathonBot's pace target."""
+    """Target N for MarathonBot: min of empirical fast-game target and leader-ERUV pace.
+
+    Empirical targets (per-player median from tournament data, rounded down):
+      2P → 20, 3P+ → 17.
+    Leader pace: floor(min_ERUV_across_players) - 1.
+    Early game: empirical cap dominates (prevents unrealistic aggression).
+    Late game: leader pace dominates when the leader is within striking distance.
+    """
     active = [p for p in players if not p.isWinner()]
     if not active:
         return 1
     min_eruv = min(_eruv_for(p, players) for p in active)
-    return max(1, math.floor(min_eruv) - 1)
+    leader_n = max(1, math.floor(min_eruv) - 1)
+    empirical_n = _MARATHON_TARGET.get(len(players), _MARATHON_TARGET_DEFAULT)
+    return min(empirical_n, leader_n)
 
 
 def _dice_by_ev(player: Bot, players: list) -> int:
