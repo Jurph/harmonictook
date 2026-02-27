@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import random
 from collections import Counter
 from dataclasses import dataclass, field
@@ -24,7 +25,45 @@ from bots import EVBot, ImpatientBot, MarathonBot, ThoughtfulBot, CoverageBot  #
 from strategy import tuv_expected
 
 
-_ELO_K: float = 32.0
+_GLICKO_Q: float = math.log(10.0) / 400.0
+_GLICKO_RD_INIT: float = 350.0
+_GLICKO_RD_MIN: float = 50.0
+
+
+def _glicko_g(rd: float) -> float:
+    """Glicko g-function: reduces opponent weight by their rating uncertainty."""
+    return 1.0 / math.sqrt(1.0 + 3.0 * _GLICKO_Q**2 * rd**2 / math.pi**2)
+
+
+def _glicko_e(r: float, r_j: float, rd_j: float) -> float:
+    """Expected score for a player rated r against an opponent rated r_j with RD rd_j."""
+    return 1.0 / (1.0 + 10.0 ** (-_glicko_g(rd_j) * (r - r_j) / 400.0))
+
+
+def _glicko_update(
+    r: float, rd: float, results: list[tuple[float, float, float]]
+) -> tuple[float, float]:
+    """Apply one Glicko-1 rating period update.
+
+    results: list of (r_j, rd_j, s_j) for each opponent faced this period.
+    s_j is 1.0 (win), 0.5 (draw), or 0.0 (loss).
+    Returns (new_rating, new_rd).
+    """
+    if not results:
+        return r, rd
+    d_sq_inv = _GLICKO_Q**2 * sum(
+        _glicko_g(rd_j)**2 * _glicko_e(r, r_j, rd_j) * (1.0 - _glicko_e(r, r_j, rd_j))
+        for r_j, rd_j, _ in results
+    )
+    d_sq = 1.0 / d_sq_inv if d_sq_inv > 0.0 else float("inf")
+    new_rd_sq = 1.0 / (1.0 / rd**2 + 1.0 / d_sq)
+    score_sum = sum(
+        _glicko_g(rd_j) * (s_j - _glicko_e(r, r_j, rd_j))
+        for r_j, rd_j, s_j in results
+    )
+    new_r = r + _GLICKO_Q * new_rd_sq * score_sum
+    new_rd = max(_GLICKO_RD_MIN, math.sqrt(new_rd_sq))
+    return new_r, new_rd
 
 
 @dataclass
@@ -32,16 +71,17 @@ class TournamentPlayer:
     """Persistent entry in a Swiss tournament."""
     label: str
     player_factory: Callable[[str], Player]
-    elo: float = field(default=1500.0)
+    rating: float = field(default=1500.0)
+    rd: float = field(default=_GLICKO_RD_INIT)
     scores: list[int] = field(default_factory=list)
 
 
 @dataclass
 class RoundResult:
     """Result of one table within a tournament round."""
-    table: list[str]               # labels in finish order (highest score first)
-    finish_scores: dict[str, int]  # label → finish_score
-    elo_deltas: dict[str, float]   # label → Elo change from this table
+    table: list[str]                  # labels in finish order (highest score first)
+    finish_scores: dict[str, int]     # label → finish_score
+    rating_deltas: dict[str, float]   # label → rating change from this table
 
 
 def finish_score(player: Player, game: Game) -> int:
@@ -196,9 +236,8 @@ def _run_table(
     stats_path: str | None = None,
     records_path: str | None = None,
 ) -> RoundResult:
-    """Run one game; update Elo and scores in place; return the round result."""
+    """Run one game; update Glicko rating+RD and scores in place; return the round result."""
     n = len(players)
-    k_prime = _ELO_K / (n - 1)
 
     game = Game(players=n)
     instances: dict[str, Player] = {}
@@ -219,54 +258,56 @@ def _run_table(
     if records_path is not None:
         _write_game_record(records_path, game, instances, scores)
 
-    # Accumulate Elo deltas using pre-game ratings (all pairs computed against initial Elo)
-    deltas: dict[str, float] = {tp.label: 0.0 for tp in players}
+    # Build per-player opponent result lists using pre-game ratings (snapshot before any update)
+    result_lists: dict[str, list[tuple[float, float, float]]] = {tp.label: [] for tp in players}
     for i in range(n):
         for j in range(i + 1, n):
             a, b = players[i], players[j]
             sa, sb = scores[a.label], scores[b.label]
-            result_a = 1.0 if sa > sb else (0.5 if sa == sb else 0.0)
-            result_b = 1.0 - result_a
-            expected_a = 1.0 / (1.0 + 10 ** ((b.elo - a.elo) / 400))
-            expected_b = 1.0 - expected_a
-            deltas[a.label] += k_prime * (result_a - expected_a)
-            deltas[b.label] += k_prime * (result_b - expected_b)
+            s_a = 1.0 if sa > sb else (0.5 if sa == sb else 0.0)
+            s_b = 1.0 - s_a
+            result_lists[a.label].append((b.rating, b.rd, s_a))
+            result_lists[b.label].append((a.rating, a.rd, s_b))
 
+    deltas: dict[str, float] = {}
     for tp in players:
-        tp.elo += deltas[tp.label]
+        new_r, new_rd = _glicko_update(tp.rating, tp.rd, result_lists[tp.label])
+        deltas[tp.label] = new_r - tp.rating
+        tp.rating = new_r
+        tp.rd = new_rd
         tp.scores.append(scores[tp.label])
 
     finish_order = sorted(players, key=lambda tp: -scores[tp.label])
     return RoundResult(
         table=[tp.label for tp in finish_order],
         finish_scores=scores,
-        elo_deltas=deltas,
+        rating_deltas=deltas,
     )
 
 
 def _seeded_tables(players: list[TournamentPlayer], table_size: int) -> list[list[TournamentPlayer]]:
-    """Sort players by Elo descending, group into tables; highest-Elo player sits last."""
-    by_elo = sorted(players, key=lambda tp: -tp.elo)
+    """Sort players by rating descending, group into tables; highest-rated player sits last."""
+    by_rating = sorted(players, key=lambda tp: -tp.rating)
     tables = []
-    for i in range(0, len(by_elo), table_size):
-        group = by_elo[i:i + table_size]
-        tables.append(list(reversed(group)))  # highest Elo → last turn order
+    for i in range(0, len(by_rating), table_size):
+        group = by_rating[i:i + table_size]
+        tables.append(list(reversed(group)))  # highest rating → last turn order
     return tables
 
 
 def _striped_tables(players: list[TournamentPlayer], table_size: int) -> list[list[TournamentPlayer]]:
-    """Sort players by Elo descending, then stripe into tables by rank modulo n_tables.
+    """Sort players by rating descending, then stripe into tables by rank modulo n_tables.
 
     For 12 players at table_size=4: ranks 1,4,7,10 / 2,5,8,11 / 3,6,9,12.
-    Each table spans the full Elo range, so upsets carry maximum Elo weight.
-    Highest-Elo player at each table sits last (same turn-order convention as _seeded_tables).
+    Each table spans the full rating range, so upsets carry maximum rating-change weight.
+    Highest-rated player at each table sits last (same turn-order convention as _seeded_tables).
     """
-    by_elo = sorted(players, key=lambda tp: -tp.elo)
-    n_tables = len(by_elo) // table_size
+    by_rating = sorted(players, key=lambda tp: -tp.rating)
+    n_tables = len(by_rating) // table_size
     tables = []
     for i in range(n_tables):
-        group = by_elo[i::n_tables][:table_size]
-        tables.append(list(reversed(group)))  # highest Elo → last turn order
+        group = by_rating[i::n_tables][:table_size]
+        tables.append(list(reversed(group)))  # highest rating → last turn order
     return tables
 
 
@@ -290,14 +331,15 @@ def _avoid_pair_repeats(
 
 
 def print_standings(players: list[TournamentPlayer], after_round: int) -> None:
-    """Print standings table sorted by Elo descending."""
-    sorted_players = sorted(players, key=lambda tp: -tp.elo)
+    """Print standings table sorted by Glicko rating descending."""
+    sorted_players = sorted(players, key=lambda tp: -tp.rating)
     print(f"\n  Standings after Round {after_round}:")
-    print(f"  {'Rank':>4}  {'Player':<14}  {'Elo':>7}  {'Avg score':>9}")
-    print(f"  {'----':>4}  {'-' * 14}  {'-------':>7}  {'---------':>9}")
+    print(f"  {'Rank':>4}  {'Player':<14}  {'Rating ± RD':>16}  {'Avg score':>9}")
+    print(f"  {'----':>4}  {'-' * 14}  {'-' * 16:>16}  {'---------':>9}")
     for rank, tp in enumerate(sorted_players, 1):
         avg = sum(tp.scores) / len(tp.scores) if tp.scores else 0.0
-        print(f"  {rank:>4}  {tp.label:<14}  {tp.elo:>7.1f}  {avg:>9.1f}")
+        rating_str = f"{tp.rating:.0f} ± {tp.rd:.0f}"
+        print(f"  {rank:>4}  {tp.label:<14}  {rating_str:>16}  {avg:>9.1f}")
     print()
 
 
@@ -332,9 +374,9 @@ def run_swiss_tournament(
         print(f"{'=' * 56}")
         for r in results:
             finish_str = "  ".join(f"{lbl}({r.finish_scores[lbl]})" for lbl in r.table)
-            delta_str = "  ".join(f"{lbl}({r.elo_deltas[lbl]:+.1f})" for lbl in r.table)
-            print(f"  Finish: {finish_str}")
-            print(f"  Elo d:  {delta_str}")
+            delta_str = "  ".join(f"{lbl}({r.rating_deltas[lbl]:+.1f})" for lbl in r.table)
+            print(f"  Finish:    {finish_str}")
+            print(f"  Rating d:  {delta_str}")
 
     for day in range(1, n_days + 1):
         if verbose and n_days > 1:
@@ -388,7 +430,7 @@ def run_swiss_tournament(
             _print_round(total_rounds, "Seeded quads", r4_results)
             print_standings(entries, total_rounds)
 
-    return sorted(entries, key=lambda tp: -tp.elo)
+    return sorted(entries, key=lambda tp: -tp.rating)
 
 
 def _default_swiss_field() -> list[TournamentPlayer]:
