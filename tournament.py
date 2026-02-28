@@ -481,29 +481,33 @@ def _default_swiss_field() -> list[TournamentPlayer]:
 
 
 def _kinematic_tournament_field() -> list[TournamentPlayer]:
-    """72-player field: 60 KinematicBots (5 offsets × 6 a-values × 2 each) +
-    12 benchmark bots (2 each of Bot, ThoughtfulBot, EVBot, CoverageBot,
-    ImpatientBot, MarathonBot).
+    """24-player field: 12 KinematicBots (6 best-performing (a, offset) cells
+    from a prior 72-player sweep × 2 each) + 12 benchmark bots (2 each of
+    Bot, ThoughtfulBot, EVBot, CoverageBot, ImpatientBot, MarathonBot).
 
-    a-values span both winning regimes identified in tournament data:
-      fast-path zone:   0.20, 0.30
-      crossing the gap: 0.45, 0.60
-      engine zone:      0.75, 0.90
+    Selected cells (a, offset) by win rate in sweep:
+      (0.45, 1): 48.1%   (0.30, 2): 45.6%   (0.20, 2): 45.0%
+      (0.45, 0): 44.4%   (0.30, 1): 44.4%   (0.20, 1): 43.1%
 
-    eruv_offset range (-1…4) covers patient through aggressive sprint;
-    skips 3 (too close to 4 to add information in a coarse sweep).
+    High-a values (0.60–0.90) and offset=4 at high-a were excluded;
+    they produce pathological behaviour (turns-to-win > 120).
     """
-    a_values     = [0.20, 0.30, 0.45, 0.60, 0.75, 0.90]
-    eruv_offsets = [-1, 0, 1, 2, 4]
+    cells = [
+        (0.45, 1),
+        (0.30, 2),
+        (0.20, 2),
+        (0.45, 0),
+        (0.30, 1),
+        (0.20, 1),
+    ]
 
     entries: list[TournamentPlayer] = []
-    for a in a_values:
+    for a, offset in cells:
         a_tag = f"{int(a * 100):02d}"
-        for offset in eruv_offsets:
-            o_tag = f"m{abs(offset)}" if offset < 0 else f"{offset:02d}"
-            factory = make_kinematic_bot(a, offset)
-            entries.append(TournamentPlayer(label=f"KLONE-{a_tag}-{o_tag}", player_factory=factory))
-            entries.append(TournamentPlayer(label=f"KOPPY-{a_tag}-{o_tag}", player_factory=factory))
+        o_tag = f"m{abs(offset)}" if offset < 0 else f"{offset:02d}"
+        factory = make_kinematic_bot(a, offset)
+        entries.append(TournamentPlayer(label=f"KLONE-{a_tag}-{o_tag}", player_factory=factory))
+        entries.append(TournamentPlayer(label=f"KOPPY-{a_tag}-{o_tag}", player_factory=factory))
 
     ev3 = make_evbot(3)
     entries += [
@@ -532,7 +536,7 @@ def main() -> None:
     parser.add_argument("--swiss", action="store_true",
                         help="run Swiss tournament with 12 named bots (3 of each type)")
     parser.add_argument("--kinematic", action="store_true",
-                        help="run 72-player kinematic sweep (60 KinematicBots + 12 benchmarks)")
+                        help="run 24-player kinematic field (12 KinematicBots + 12 benchmarks)")
     parser.add_argument("--days", type=int, default=1, metavar="N",
                         help="number of 4-round days in the Swiss tournament (default: 1)")
     parser.add_argument("--horizons", type=int, nargs="+", default=[1, 3, 5, 7],
