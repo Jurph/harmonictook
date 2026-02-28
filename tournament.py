@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from harmonictook import Bot, Game, NullDisplay, Player, PlayerDeck, RecordingDisplay, UpgradeCard
-from bots import EVBot, ImpatientBot, KinematicBot, MarathonBot, ThoughtfulBot, CoverageBot  # noqa: F401 (re-exported for callers)
+from bots import EVBot, FromageBot, ImpatientBot, KinematicBot, MarathonBot, ThoughtfulBot, CoverageBot  # noqa: F401 (re-exported for callers)
 from strategy import pmf_mean, round_pmf, tuv_expected
 
 
@@ -481,9 +481,9 @@ def _default_swiss_field() -> list[TournamentPlayer]:
 
 
 def _kinematic_tournament_field() -> list[TournamentPlayer]:
-    """24-player field: 12 KinematicBots (6 best-performing (a, offset) cells
-    from a prior 72-player sweep × 2 each) + 12 benchmark bots (2 each of
-    Bot, ThoughtfulBot, EVBot, CoverageBot, ImpatientBot, MarathonBot).
+    """26-player field: 12 KinematicBots (6 best-performing (a, offset) cells
+    from a prior 72-player sweep × 2 each) + 14 benchmark bots (2 each of
+    Bot, ThoughtfulBot, EVBot, CoverageBot, ImpatientBot, MarathonBot, FromageBot).
 
     Selected cells (a, offset) by win rate in sweep:
       (0.45, 1): 48.1%   (0.30, 2): 45.6%   (0.20, 2): 45.0%
@@ -519,10 +519,12 @@ def _kinematic_tournament_field() -> list[TournamentPlayer]:
         TournamentPlayer(label="Ellen",   player_factory=ev3),
         TournamentPlayer(label="Chadd",   player_factory=CoverageBot),
         TournamentPlayer(label="Carli",   player_factory=CoverageBot),
-        TournamentPlayer(label="Iggy",    player_factory=ImpatientBot),
-        TournamentPlayer(label="Izzy",    player_factory=ImpatientBot),
-        TournamentPlayer(label="Madison", player_factory=MarathonBot),
-        TournamentPlayer(label="Michael", player_factory=MarathonBot),
+        TournamentPlayer(label="Iggy",     player_factory=ImpatientBot),
+        TournamentPlayer(label="Izzy",     player_factory=ImpatientBot),
+        TournamentPlayer(label="Madison",  player_factory=MarathonBot),
+        TournamentPlayer(label="Michael",  player_factory=MarathonBot),
+        TournamentPlayer(label="Felicity", player_factory=FromageBot),
+        TournamentPlayer(label="Franklin", player_factory=FromageBot),
     ]
     return entries
 
@@ -536,7 +538,7 @@ def main() -> None:
     parser.add_argument("--swiss", action="store_true",
                         help="run Swiss tournament with 12 named bots (3 of each type)")
     parser.add_argument("--kinematic", action="store_true",
-                        help="run 24-player kinematic field (12 KinematicBots + 12 benchmarks)")
+                        help="run 26-player kinematic field (12 KinematicBots + 14 benchmarks)")
     parser.add_argument("--days", type=int, default=1, metavar="N",
                         help="number of 4-round days in the Swiss tournament (default: 1)")
     parser.add_argument("--horizons", type=int, nargs="+", default=[1, 3, 5, 7],

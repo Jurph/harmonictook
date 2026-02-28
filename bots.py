@@ -423,6 +423,84 @@ class ImpatientBot(Bot):
                 self.deck.deck.pop()
 
 
+class FromageBot(Bot):
+    """Priority-driven bot with per-card purchase caps, derived from tournament data.
+
+    Builds a Ranch-Cheese engine as its primary win path.  The PRIORITY list is
+    processed in order: the bot buys the first entry where it owns fewer than cap
+    copies and the card is available.  Duplicate entries (e.g. Ranch appears three
+    times at caps 3, 5, 7) let the engine build in stages — get cattle first, then
+    unlock the Cheese Factory multiplier, then expand cattle further.
+
+    Fallback when all priority items are satisfied: prefer options not already at
+    their cap; if everything is at cap, buy anything available.
+    """
+
+    #: (card_name, max_copies): walked in order each turn.
+    PRIORITY: list[tuple[str, int]] = [
+        # Landmarks — always buy when affordable; they are the win condition.
+        ("Radio Tower",              1),
+        ("Amusement Park",           1),
+        ("Shopping Mall",            1),
+        ("Train Station",            1),
+        # Stage 1: cattle foundation.
+        ("Ranch",                    3),
+        # Stage 2: first multiplier — now a 7-roll pays 9+ coins.
+        ("Cheese Factory",           1),
+        # Stage 3: cheap reliable income while the engine grows.
+        ("Convenience Store",        4),
+        # Stage 4: expand cattle with CF already active.
+        ("Ranch",                    5),
+        # Stage 5: Mine — high direct payout AND gear for a potential FF.
+        ("Mine",                     2),
+        # Stage 6: second multiplier — only worth it with 5+ cattle.
+        ("Cheese Factory",           2),
+        # Stage 7: maximise cattle.
+        ("Ranch",                    7),
+        # Fill remaining income slots with reliable cards.
+        ("Bakery",                   3),
+        ("Apple Orchard",            2),
+        ("Wheat Field",              3),
+        ("Family Restaurant",        1),
+        # Low-value additions: one each is fine, stacking is not.
+        ("Forest",                   2),
+        ("Furniture Factory",        1),
+        ("TV Station",               1),
+        ("Business Center",          1),
+        ("Stadium",                  1),
+        ("Cafe",                     1),
+        ("Fruit & Vegetable Market", 2),
+    ]
+
+    def _count(self, name: str) -> int:
+        """Count copies of a card by name in this player's deck."""
+        return sum(1 for c in self.deck.deck if c.name == name)
+
+    def chooseCard(self, options: list, game: Game | None = None) -> str | None:
+        """Return the first priority-list card whose count is below its cap.
+
+        Falls back to options not yet at their cap; if everything is at cap,
+        picks uniformly at random from all options.
+        """
+        if not options:
+            return None
+        names = [o.name if isinstance(o, Card) else o for o in options]
+        name_set = set(names)
+        for card_name, cap in self.PRIORITY:
+            if card_name in name_set and self._count(card_name) < cap:
+                return card_name
+        # Fallback: avoid cards that are at or above their highest stated cap.
+        max_cap = {name: 0 for name in name_set}
+        for card_name, cap in self.PRIORITY:
+            if card_name in max_cap:
+                max_cap[card_name] = max(max_cap[card_name], cap)
+        uncapped = [n for n in names if self._count(n) < max_cap.get(n, 1)]
+        return random.choice(uncapped if uncapped else names)
+
+    def chooseDice(self, players: list | None = None) -> int:
+        return _dice_by_ev(self, players or [self])
+
+
 class MarathonBot(Bot):
     """Bot that maximizes P(win in N rounds), N = max(1, floor(leader_ERUV) - 1).
 
