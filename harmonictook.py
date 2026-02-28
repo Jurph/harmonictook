@@ -768,10 +768,10 @@ def setPlayers(players: int | None = None, bots: int = 0, humans: int = 0) -> li
     elif players is None:
         _PLAYER_OPTIONS = [
             "Human",
-            "Hard opponent (Fromage or Impatient, 50/50)",
-            "Medium opponent (Marathon, EV, or Thoughtful — equal chance)",
-            "Easy opponent (Coverage 75%, Random 25%)",
-            "Surprise me! (any of the 7 skill bots, equal chance)",
+            "Hard",
+            "Medium",
+            "Easy",
+            "Surprise Me!",
         ]
         moreplayers = True
         while moreplayers:

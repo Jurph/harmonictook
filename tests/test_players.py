@@ -205,8 +205,8 @@ class TestSetPlayers(unittest.TestCase):
     @patch('harmonictook.random.choices', return_value=[Bot])
     @patch('harmonictook.random.choice', return_value=ThoughtfulBot)
     @patch('harmonictook.utility.userChoice', side_effect=[
-        'Easy opponent (Coverage 75%, Random 25%)',
-        'Medium opponent (Marathon, EV, or Thoughtful \u2014 equal chance)',
+        'Easy',
+        'Medium',
     ])
     @patch('builtins.input', side_effect=['Robo', 'Thinker', 'n'])
     def testSetPlayersInteractiveTwoBots(self, mock_input, mock_userChoice, mock_choice, mock_choices):
@@ -220,7 +220,7 @@ class TestSetPlayers(unittest.TestCase):
     @patch('harmonictook.random.choices', return_value=[Bot])
     @patch('harmonictook.utility.userChoice', side_effect=[
         'Human',
-        'Easy opponent (Coverage 75%, Random 25%)',
+        'Easy',
     ])
     @patch('builtins.input', side_effect=['Alice', 'Bob', 'n'])
     def testSetPlayersInteractiveHuman(self, mock_input, mock_userChoice, mock_choices):
@@ -233,8 +233,8 @@ class TestSetPlayers(unittest.TestCase):
 
     @patch('harmonictook.random.choices', return_value=[ImpatientBot])
     @patch('harmonictook.utility.userChoice', side_effect=[
-        'Hard opponent (Fromage or Impatient, 50/50)',
-        'Easy opponent (Coverage 75%, Random 25%)',
+        'Hard',
+        'Easy',
     ])
     @patch('builtins.input', side_effect=['Speedy', 'Trivial', 'n'])
     def testSetPlayersInteractiveToughBot(self, mock_input, mock_userChoice, mock_choices):
@@ -246,7 +246,7 @@ class TestSetPlayers(unittest.TestCase):
         self.assertEqual(result[0].name, 'Speedy')
 
     @patch('harmonictook.random.choices', return_value=[Bot])
-    @patch('harmonictook.utility.userChoice', side_effect=['Easy opponent (Coverage 75%, Random 25%)'] * 4)
+    @patch('harmonictook.utility.userChoice', side_effect=['Easy'] * 4)
     @patch('builtins.input', side_effect=['R1', 'R2', 'y', 'R3', 'y', 'R4'])
     def testSetPlayersInteractiveFourPlayers(self, mock_input, mock_userChoice, mock_choices):
         """Verify interactive: loop auto-breaks at 4 players without asking for more."""
@@ -255,7 +255,7 @@ class TestSetPlayers(unittest.TestCase):
 
     @patch('builtins.print')
     @patch('harmonictook.random.choices', return_value=[Bot])
-    @patch('harmonictook.utility.userChoice', side_effect=['Easy opponent (Coverage 75%, Random 25%)'] * 3)
+    @patch('harmonictook.utility.userChoice', side_effect=['Easy'] * 3)
     @patch('builtins.input', side_effect=['R1', 'R2', 'sure', 'R3', 'n'])
     def testSetPlayersInteractiveBadYesNo(self, mock_input, mock_userChoice, mock_choices, mock_print):
         """Verify interactive: unrecognised Y/N answer prints an error and loops."""
