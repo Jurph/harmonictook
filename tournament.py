@@ -20,9 +20,9 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Callable
 
-from harmonictook import Bot, Game, NullDisplay, Player, PlayerDeck, UpgradeCard
+from harmonictook import Bot, Game, NullDisplay, Player, PlayerDeck, RecordingDisplay, UpgradeCard
 from bots import EVBot, ImpatientBot, MarathonBot, ThoughtfulBot, CoverageBot  # noqa: F401 (re-exported for callers)
-from strategy import tuv_expected
+from strategy import pmf_mean, round_pmf, tuv_expected
 
 
 _GLICKO_Q: float = math.log(10.0) / 400.0
@@ -200,18 +200,35 @@ def _write_game_record(
     game: Game,
     instances: dict[str, Player],
     scores: dict[str, int],
+    all_events: list,
 ) -> None:
     """Append one JSONL record describing the end state of a completed game.
 
     Each line is a compact JSON object with top-level game metadata and a 'players'
     list. Landmarks are separated from income cards so downstream queries can filter
     on upgrade ownership without knowing which card names are upgrades.
+
+    Per-player fields:
+      income_ev     — mean coins per round at game end (for acceleration analysis)
+      card_payouts  — {card_name: {fires, total}} aggregated from game events
     """
+    # Aggregate card payouts from event stream: payout (Blue/Green/factory),
+    # steal (Red/TVStation), collect (Stadium) — all now carry card=self.name.
+    payout_types = {"payout", "steal", "collect"}
+    by_player: dict[str, dict[str, dict[str, int]]] = {lbl: {} for lbl in instances}
+    for ev in all_events:
+        if ev.type not in payout_types or not ev.card or ev.player not in by_player:
+            continue
+        entry = by_player[ev.player].setdefault(ev.card, {"fires": 0, "total": 0})
+        entry["fires"] += 1
+        entry["total"] += ev.value
+
     player_records = []
     for label, player in instances.items():
         landmarks = sorted(c.name for c in player.deck.deck if isinstance(c, UpgradeCard))
         income_cards = [c.name for c in player.deck.deck if not isinstance(c, UpgradeCard)]
         deck_counts = dict(Counter(income_cards))
+        income_ev = pmf_mean(round_pmf(player, game.players))
         player_records.append({
             "label": label,
             "bot_type": type(player).__name__,
@@ -221,6 +238,8 @@ def _write_game_record(
             "bank": player.bank,
             "landmarks": landmarks,
             "deck": deck_counts,
+            "income_ev": round(income_ev, 4),
+            "card_payouts": by_player[label],
         })
     record = {
         "turns": game.turn_number,
@@ -246,7 +265,8 @@ def _run_table(
         p.deck = PlayerDeck(p)
         game.players[i] = p
         instances[tp.label] = p
-    game.run(display=NullDisplay())
+    recorder = RecordingDisplay()
+    game.run(display=recorder)
 
     scores: dict[str, int] = {tp.label: finish_score(instances[tp.label], game) for tp in players}
 
@@ -256,7 +276,7 @@ def _run_table(
             f.write(f"turns={game.turn_number}  n={n}  {player_scores}\n")
 
     if records_path is not None:
-        _write_game_record(records_path, game, instances, scores)
+        _write_game_record(records_path, game, instances, scores, recorder.events)
 
     # Build per-player opponent result lists using pre-game ratings (snapshot before any update)
     result_lists: dict[str, list[tuple[float, float, float]]] = {tp.label: [] for tp in players}

@@ -450,7 +450,7 @@ class Red(Card):
             payout_amount += 1
         payout = dieroller.deduct(payout_amount)
         self.owner.deposit(payout)
-        return [Event(type="steal", player=self.owner.name, target=dieroller.name, value=payout)]
+        return [Event(type="steal", card=self.name, player=self.owner.name, target=dieroller.name, value=payout)]
 
 class Blue(Card):
     """Blue card: pays the bank → card owner regardless of who rolled the dice."""
@@ -498,7 +498,7 @@ class Stadium(Card):
                 continue
             payment = person.deduct(self.payout)
             dieroller.deposit(payment)
-            events.append(Event(type="collect", player=dieroller.name, target=person.name, value=payment))
+            events.append(Event(type="collect", card=self.name, player=dieroller.name, target=person.name, value=payment))
         return events
 
 class TVStation(Card):
@@ -528,7 +528,7 @@ class TVStation(Card):
                 events.append(Event(type="steal_target", player=self.owner.name, target=target.name))
                 payment = target.deduct(self.payout)
                 dieroller.deposit(payment)
-                events.append(Event(type="steal", player=self.owner.name, target=target.name, value=payment))
+                events.append(Event(type="steal", card=self.name, player=self.owner.name, target=target.name, value=payment))
             else:
                 events.append(Event(type="steal_no_target", player=self.owner.name))
         else:
@@ -911,6 +911,20 @@ class NullDisplay(Display):
 
     def show_events(self, events: list[Event]) -> None:
         pass
+
+
+class RecordingDisplay(Display):
+    """Accumulates all events from a game run for post-hoc analysis.
+
+    After game.run(), inspect self.events to aggregate card payouts,
+    compute acceleration, or build any other per-game metrics.
+    """
+
+    def __init__(self) -> None:
+        self.events: list[Event] = []
+
+    def show_events(self, events: list[Event]) -> None:
+        self.events.extend(events)
 
 
 class Game:
