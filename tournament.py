@@ -500,12 +500,10 @@ def _kinematic_tournament_field() -> list[TournamentPlayer]:
     for a in a_values:
         a_tag = f"{int(a * 100):02d}"
         for offset in eruv_offsets:
-            o_tag = f"{offset:+d}".replace("+", "p").replace("-", "n")
+            o_tag = f"m{abs(offset)}" if offset < 0 else f"{offset:02d}"
             factory = make_kinematic_bot(a, offset)
-            label_a = f"K{a_tag}{o_tag}a"
-            label_b = f"K{a_tag}{o_tag}b"
-            entries.append(TournamentPlayer(label=label_a, player_factory=factory))
-            entries.append(TournamentPlayer(label=label_b, player_factory=factory))
+            entries.append(TournamentPlayer(label=f"KLONE-{a_tag}-{o_tag}", player_factory=factory))
+            entries.append(TournamentPlayer(label=f"KOPPY-{a_tag}-{o_tag}", player_factory=factory))
 
     ev3 = make_evbot(3)
     entries += [
