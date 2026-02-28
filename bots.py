@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 import random
 
-from harmonictook import Blue, Bot, BusinessCenter, Card, Game, Green, UpgradeCard
+from harmonictook import Blue, Bot, Card, Game, Green, UpgradeCard
 from strategy import (
     delta_coverage,
     delta_ev,
@@ -435,6 +435,10 @@ class MarathonBot(Bot):
     chooseCard and chooseBusinessCenterSwap use game.players when available.
     """
 
+    def _target_n(self, players: list) -> int:
+        """Target rounds-to-win horizon. Overrideable by subclasses."""
+        return _leader_n(players)
+
     # ------------------------------------------------------------------
     # Public decision methods
     # ------------------------------------------------------------------
@@ -444,7 +448,7 @@ class MarathonBot(Bot):
         use_players = players or [self]
         if not self.hasTrainStation:
             return 1
-        n = _leader_n(use_players)
+        n = self._target_n(use_players)
         old = self.hasTrainStation
         try:
             self.hasTrainStation = False
@@ -464,7 +468,7 @@ class MarathonBot(Bot):
         if not self.hasRadioTower or last_roll is None:
             return False
         income = _roll_income(self, last_roll)
-        n = _leader_n([self])
+        n = self._target_n([self])
         if n == 1:
             deficit = max(0, _landmark_cost_remaining(self) - self.bank)
             return income < deficit
@@ -483,7 +487,7 @@ class MarathonBot(Bot):
             if card is not None and isinstance(card, UpgradeCard):
                 return 'buy'
         # Income card: only buy if doing so raises P(win in N) above coasting.
-        n = _leader_n(players)
+        n = self._target_n(players)
         base_pwn = _prob_win_in_n_rounds(self, players, n)
         for name in options:
             card = next((c for c in availableCards.deck if c.name == name), None)
@@ -497,7 +501,7 @@ class MarathonBot(Bot):
             return None
         names = [o.name if isinstance(o, Card) else o for o in options]
         players = list(game.players) if game else [self]
-        n = _leader_n(players)
+        n = self._target_n(players)
 
         cards_by_name: dict[str, Card] = {}
         for o in options:
@@ -538,7 +542,7 @@ class MarathonBot(Bot):
         if not my_swappable or not their_swappable:
             return None
         players = [self]
-        n = _leader_n(players)
+        n = self._target_n(players)
         card_to_give = max(my_swappable, key=lambda c: self._pwn_after_remove(c, players, n))
         card_to_take = max(their_swappable, key=lambda c: self._pwn_after_add(c, players, n))
         return (card_to_give, card_to_take)
@@ -587,3 +591,77 @@ class MarathonBot(Bot):
             return _prob_win_in_n_rounds(self, players, n)
         finally:
             self.deck.deck.insert(idx, removed)
+
+
+def _kinematic_n(
+    opponents: list,
+    players: list,
+    a: float,
+    eruv_offset: int,
+) -> int:
+    """Kinematic target N: when does the most dangerous opponent finish, minus offset.
+
+    For each opponent, estimates their rounds-to-win using:
+        N = (-v + sqrt(v² + 2·a_eff·deficit)) / a_eff
+    where a_eff = a * (n_players + 3) / 7  (table-size scaling, anchored at 4P).
+
+    Falls back to ceil(deficit / v) when a ≈ 0.
+    Applies the empirical cap from _MARATHON_TARGET, then subtracts eruv_offset.
+    Returns at least 1.
+    """
+    n_players = len(players)
+    a_eff = a * (n_players + 3) / 7
+
+    ns = []
+    for opp in opponents:
+        deficit = max(0.0, float(_landmark_cost_remaining(opp) - opp.bank))
+        if deficit <= 0.0:
+            ns.append(1)
+            continue
+        v = pmf_mean(round_pmf(opp, players))
+        if v <= 0.0:
+            ns.append(999)
+            continue
+        if a_eff < 1e-9:
+            n_k = deficit / v
+        else:
+            n_k = (-v + math.sqrt(v * v + 2.0 * a_eff * deficit)) / a_eff
+        ns.append(max(1, math.ceil(n_k)))
+
+    leader_n = min(ns) if ns else 1
+    empirical_n = _MARATHON_TARGET.get(n_players, _MARATHON_TARGET_DEFAULT)
+    return max(1, min(empirical_n, leader_n) - eruv_offset)
+
+
+class KinematicBot(MarathonBot):
+    """MarathonBot whose target N uses a kinematic ERUV model with tunable parameters.
+
+    Instead of floor(min_ERUV) - 1, estimates each opponent's rounds-to-win via
+    the kinematic equation: N = (-v + sqrt(v² + 2·a_eff·deficit)) / a_eff,
+    then targets min(opponent_N) - eruv_offset.
+
+    Parameters
+    ----------
+    a : float
+        Assumed opponent acceleration in coins/round².
+        ~0.20 = fast-path opponent (ImpatientBot regime)
+        ~0.45 = field median
+        ~0.90 = engine-builder (ThoughtfulBot/CoverageBot regime)
+    eruv_offset : int
+        Rounds ahead of (positive) or behind (negative) the kinematic leader to target.
+        Typical range: -1 (patient) … 4 (aggressive sprint).
+    """
+
+    def __init__(self, name: str, a: float = 0.45, eruv_offset: int = 1) -> None:
+        super().__init__(name=name)
+        self.a = a
+        self.eruv_offset = eruv_offset
+
+    def _target_n(self, players: list) -> int:
+        """Kinematic override: estimate opponent finish times, aim eruv_offset ahead."""
+        active = [p for p in players if not p.isWinner()]
+        others = [p for p in active if p is not self]
+        if not others:
+            # No opponent context (e.g. chooseReroll call with [self]): fall back.
+            return _leader_n(players)
+        return _kinematic_n(others, players, self.a, self.eruv_offset)

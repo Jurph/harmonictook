@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from harmonictook import Bot, Game, NullDisplay, Player, PlayerDeck, RecordingDisplay, UpgradeCard
-from bots import EVBot, ImpatientBot, MarathonBot, ThoughtfulBot, CoverageBot  # noqa: F401 (re-exported for callers)
+from bots import EVBot, ImpatientBot, KinematicBot, MarathonBot, ThoughtfulBot, CoverageBot  # noqa: F401 (re-exported for callers)
 from strategy import pmf_mean, round_pmf, tuv_expected
 
 
@@ -131,6 +131,14 @@ def run_tournament(
     Returns {n_players: (wins, losses)} for each bracket.
     """
     return {n: run_bracket(bue_factory, n, n_games) for n in (2, 3, 4)}
+
+
+def make_kinematic_bot(a: float, eruv_offset: int) -> Callable[[str], KinematicBot]:
+    """Return a factory that creates a KinematicBot with the given parameters."""
+    def factory(name: str) -> KinematicBot:
+        return KinematicBot(name=name, a=a, eruv_offset=eruv_offset)
+    factory.__name__ = f"KinematicBot(a={a},o={eruv_offset:+d})"
+    return factory
 
 
 def make_evbot(n_horizon: int) -> Callable[[str], EVBot]:
@@ -472,6 +480,51 @@ def _default_swiss_field() -> list[TournamentPlayer]:
     ]
 
 
+def _kinematic_tournament_field() -> list[TournamentPlayer]:
+    """72-player field: 60 KinematicBots (5 offsets × 6 a-values × 2 each) +
+    12 benchmark bots (2 each of Bot, ThoughtfulBot, EVBot, CoverageBot,
+    ImpatientBot, MarathonBot).
+
+    a-values span both winning regimes identified in tournament data:
+      fast-path zone:   0.20, 0.30
+      crossing the gap: 0.45, 0.60
+      engine zone:      0.75, 0.90
+
+    eruv_offset range (-1…4) covers patient through aggressive sprint;
+    skips 3 (too close to 4 to add information in a coarse sweep).
+    """
+    a_values     = [0.20, 0.30, 0.45, 0.60, 0.75, 0.90]
+    eruv_offsets = [-1, 0, 1, 2, 4]
+
+    entries: list[TournamentPlayer] = []
+    for a in a_values:
+        a_tag = f"{int(a * 100):02d}"
+        for offset in eruv_offsets:
+            o_tag = f"{offset:+d}".replace("+", "p").replace("-", "n")
+            factory = make_kinematic_bot(a, offset)
+            label_a = f"K{a_tag}{o_tag}a"
+            label_b = f"K{a_tag}{o_tag}b"
+            entries.append(TournamentPlayer(label=label_a, player_factory=factory))
+            entries.append(TournamentPlayer(label=label_b, player_factory=factory))
+
+    ev3 = make_evbot(3)
+    entries += [
+        TournamentPlayer(label="Rascal",  player_factory=Bot),
+        TournamentPlayer(label="Rebeka",  player_factory=Bot),
+        TournamentPlayer(label="Tim",     player_factory=ThoughtfulBot),
+        TournamentPlayer(label="Tay",     player_factory=ThoughtfulBot),
+        TournamentPlayer(label="Edgar",   player_factory=ev3),
+        TournamentPlayer(label="Ellen",   player_factory=ev3),
+        TournamentPlayer(label="Chadd",   player_factory=CoverageBot),
+        TournamentPlayer(label="Carli",   player_factory=CoverageBot),
+        TournamentPlayer(label="Iggy",    player_factory=ImpatientBot),
+        TournamentPlayer(label="Izzy",    player_factory=ImpatientBot),
+        TournamentPlayer(label="Madison", player_factory=MarathonBot),
+        TournamentPlayer(label="Michael", player_factory=MarathonBot),
+    ]
+    return entries
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Headless bot tournament")
     parser.add_argument("--games", type=int, default=5, metavar="N",
@@ -480,6 +533,8 @@ def main() -> None:
                         help="run N-horizon shootout instead of BUE vs Bot sparring")
     parser.add_argument("--swiss", action="store_true",
                         help="run Swiss tournament with 12 named bots (3 of each type)")
+    parser.add_argument("--kinematic", action="store_true",
+                        help="run 72-player kinematic sweep (60 KinematicBots + 12 benchmarks)")
     parser.add_argument("--days", type=int, default=1, metavar="N",
                         help="number of 4-round days in the Swiss tournament (default: 1)")
     parser.add_argument("--horizons", type=int, nargs="+", default=[1, 3, 5, 7],
@@ -490,7 +545,10 @@ def main() -> None:
                         help="append per-game JSONL records (decks, ERUV, bot type) to FILE")
     args = parser.parse_args()
 
-    if args.swiss:
+    if args.kinematic:
+        entries = _kinematic_tournament_field()
+        run_swiss_tournament(entries, n_days=args.days, stats_path=args.stats, records_path=args.records)
+    elif args.swiss:
         entries = _default_swiss_field()
         run_swiss_tournament(entries, n_days=args.days, stats_path=args.stats, records_path=args.records)
     elif args.round_robin:
