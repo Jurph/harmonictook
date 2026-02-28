@@ -747,7 +747,10 @@ def setPlayers(players: int | None = None, bots: int = 0, humans: int = 0) -> li
     # Lazy import — bots.py imports harmonictook (for Bot, Player, etc.) and strategy
     # (for EV functions), so importing at module level would create a circular dependency.
     # By the time setPlayers() is called the module is fully loaded and this resolves cleanly.
-    from bots import ThoughtfulBot, EVBot, CoverageBot, ImpatientBot, MarathonBot  # noqa: PLC0415
+    from bots import (  # noqa: PLC0415
+        ThoughtfulBot, EVBot, CoverageBot, ImpatientBot, MarathonBot,
+        FromageBot, KinematicBot,
+    )
     playerlist = []
     if bots > 0 or humans > 0:
         total = bots + humans
@@ -765,13 +768,10 @@ def setPlayers(players: int | None = None, bots: int = 0, humans: int = 0) -> li
     elif players is None:
         _PLAYER_OPTIONS = [
             "Human",
-            "Tough Bot (EV-ranked strategy)",
-            "Marathon Bot (P(win in N) strategy)",
-            "Impatient Bot (ERUV-minimising strategy)",
-            "Medium Bot (heuristic preferences)",
-            "Coverage Bot (coverage-maximising strategy)",
-            "Trivial Bot (random choices)",
-            "Pick a bot for me",
+            "Hard opponent (Fromage or Impatient, 50/50)",
+            "Medium opponent (Marathon, EV, or Thoughtful — equal chance)",
+            "Easy opponent (Coverage 75%, Random 25%)",
+            "Surprise me! (any of the 7 skill bots, equal chance)",
         ]
         moreplayers = True
         while moreplayers:
@@ -781,20 +781,16 @@ def setPlayers(players: int | None = None, bots: int = 0, humans: int = 0) -> li
                 playerlist.append(Human(name=str(playername)))
             else:
                 playername = input("What's the bot's name? ")
-                if choice == "Tough Bot (EV-ranked strategy)":
-                    playerlist.append(EVBot(name=str(playername)))
-                elif choice == "Marathon Bot (P(win in N) strategy)":
-                    playerlist.append(MarathonBot(name=str(playername)))
-                elif choice == "Impatient Bot (ERUV-minimising strategy)":
-                    playerlist.append(ImpatientBot(name=str(playername)))
-                elif choice == "Medium Bot (heuristic preferences)":
-                    playerlist.append(ThoughtfulBot(name=str(playername)))
-                elif choice == "Coverage Bot (coverage-maximising strategy)":
-                    playerlist.append(CoverageBot(name=str(playername)))
-                elif choice == "Trivial Bot (random choices)":
-                    playerlist.append(Bot(name=str(playername)))
-                else:  # "Pick a bot for me"
-                    playerlist.append(random.choice([EVBot, MarathonBot, ImpatientBot, ThoughtfulBot, CoverageBot, Bot])(name=str(playername)))
+                if "Hard" in choice:
+                    cls = random.choices([FromageBot, ImpatientBot], weights=[50, 50])[0]
+                elif "Medium" in choice:
+                    cls = random.choice([MarathonBot, EVBot, ThoughtfulBot])
+                elif "Easy" in choice:
+                    cls = random.choices([CoverageBot, Bot], weights=[75, 25])[0]
+                else:  # Surprise me
+                    cls = random.choice([ThoughtfulBot, MarathonBot, ImpatientBot,
+                                         EVBot, CoverageBot, FromageBot, KinematicBot])
+                playerlist.append(cls(name=str(playername)))
             if len(playerlist) == 4:
                 break
             elif len(playerlist) >= 2:

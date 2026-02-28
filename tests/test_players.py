@@ -5,7 +5,7 @@
 import unittest
 from unittest.mock import patch
 from harmonictook import Game, Player, Bot, Human, setPlayers
-from bots import ThoughtfulBot
+from bots import ThoughtfulBot, ImpatientBot
 
 
 class TestPlayerBasics(unittest.TestCase):
@@ -202,47 +202,62 @@ class TestSetPlayers(unittest.TestCase):
         with self.assertRaises(ValueError):
             setPlayers(3.14)
 
-    @patch('harmonictook.utility.userChoice', side_effect=['Trivial Bot (random choices)', 'Medium Bot (heuristic preferences)'])
+    @patch('harmonictook.random.choices', return_value=[Bot])
+    @patch('harmonictook.random.choice', return_value=ThoughtfulBot)
+    @patch('harmonictook.utility.userChoice', side_effect=[
+        'Easy opponent (Coverage 75%, Random 25%)',
+        'Medium opponent (Marathon, EV, or Thoughtful \u2014 equal chance)',
+    ])
     @patch('builtins.input', side_effect=['Robo', 'Thinker', 'n'])
-    def testSetPlayersInteractiveTwoBots(self, mock_input, mock_userChoice):
-        """Verify interactive: Trivial Bot → Bot, Medium Bot → ThoughtfulBot, 'n' → done."""
+    def testSetPlayersInteractiveTwoBots(self, mock_input, mock_userChoice, mock_choice, mock_choices):
+        """Verify interactive: Easy → Bot (mocked), Medium → ThoughtfulBot (mocked), 'n' → done."""
         result = setPlayers()
         self.assertEqual(len(result), 2)
         self.assertIsInstance(result[0], Bot)
         self.assertIsInstance(result[1], ThoughtfulBot)
         self.assertEqual(result[1].name, 'Thinker')
 
-    @patch('harmonictook.utility.userChoice', side_effect=['Human', 'Trivial Bot (random choices)'])
+    @patch('harmonictook.random.choices', return_value=[Bot])
+    @patch('harmonictook.utility.userChoice', side_effect=[
+        'Human',
+        'Easy opponent (Coverage 75%, Random 25%)',
+    ])
     @patch('builtins.input', side_effect=['Alice', 'Bob', 'n'])
-    def testSetPlayersInteractiveHuman(self, mock_input, mock_userChoice):
-        """Verify interactive: Human + name → Human player, Trivial Bot + name → Bot, 'n' → done."""
+    def testSetPlayersInteractiveHuman(self, mock_input, mock_userChoice, mock_choices):
+        """Verify interactive: Human + name → Human player, Easy → Bot (mocked), 'n' → done."""
         result = setPlayers()
         self.assertEqual(len(result), 2)
         self.assertIsInstance(result[0], Human)
         self.assertEqual(result[0].name, 'Alice')
         self.assertIsInstance(result[1], Bot)
 
-    @patch('harmonictook.utility.userChoice', side_effect=['Tough Bot (EV-ranked strategy)', 'Trivial Bot (random choices)'])
-    @patch('builtins.input', side_effect=['EVRobo', 'Trivial', 'n'])
-    def testSetPlayersInteractiveToughBot(self, mock_input, mock_userChoice):
-        """Verify interactive: Tough Bot → EVBot with correct name."""
-        from bots import EVBot
+    @patch('harmonictook.random.choices', return_value=[ImpatientBot])
+    @patch('harmonictook.utility.userChoice', side_effect=[
+        'Hard opponent (Fromage or Impatient, 50/50)',
+        'Easy opponent (Coverage 75%, Random 25%)',
+    ])
+    @patch('builtins.input', side_effect=['Speedy', 'Trivial', 'n'])
+    def testSetPlayersInteractiveToughBot(self, mock_input, mock_userChoice, mock_choices):
+        """Verify interactive: Hard → ImpatientBot (mocked), Easy → Bot (mocked)."""
+        from bots import ImpatientBot
         result = setPlayers()
         self.assertEqual(len(result), 2)
-        self.assertIsInstance(result[0], EVBot)
-        self.assertEqual(result[0].name, 'EVRobo')
+        self.assertIsInstance(result[0], ImpatientBot)
+        self.assertEqual(result[0].name, 'Speedy')
 
-    @patch('harmonictook.utility.userChoice', side_effect=['Trivial Bot (random choices)'] * 4)
+    @patch('harmonictook.random.choices', return_value=[Bot])
+    @patch('harmonictook.utility.userChoice', side_effect=['Easy opponent (Coverage 75%, Random 25%)'] * 4)
     @patch('builtins.input', side_effect=['R1', 'R2', 'y', 'R3', 'y', 'R4'])
-    def testSetPlayersInteractiveFourPlayers(self, mock_input, mock_userChoice):
+    def testSetPlayersInteractiveFourPlayers(self, mock_input, mock_userChoice, mock_choices):
         """Verify interactive: loop auto-breaks at 4 players without asking for more."""
         result = setPlayers()
         self.assertEqual(len(result), 4)
 
     @patch('builtins.print')
-    @patch('harmonictook.utility.userChoice', side_effect=['Trivial Bot (random choices)'] * 3)
+    @patch('harmonictook.random.choices', return_value=[Bot])
+    @patch('harmonictook.utility.userChoice', side_effect=['Easy opponent (Coverage 75%, Random 25%)'] * 3)
     @patch('builtins.input', side_effect=['R1', 'R2', 'sure', 'R3', 'n'])
-    def testSetPlayersInteractiveBadYesNo(self, mock_input, mock_userChoice, mock_print):
+    def testSetPlayersInteractiveBadYesNo(self, mock_input, mock_userChoice, mock_choices, mock_print):
         """Verify interactive: unrecognised Y/N answer prints an error and loops."""
         result = setPlayers()
         self.assertEqual(len(result), 3)
