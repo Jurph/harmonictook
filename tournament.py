@@ -462,71 +462,49 @@ def run_swiss_tournament(
 
 
 def _default_swiss_field() -> list[TournamentPlayer]:
-    """12-player field: 3 of each bot type with naming convention R/T/E/C."""
-    ev3 = make_evbot(3)
-    return [
-        TournamentPlayer(label="Rascal",  player_factory=Bot),
-        TournamentPlayer(label="Rebeka",  player_factory=Bot),
-        TournamentPlayer(label="Tim",     player_factory=ThoughtfulBot),
-        TournamentPlayer(label="Tay",     player_factory=ThoughtfulBot),
-        TournamentPlayer(label="Edgar",   player_factory=ev3),
-        TournamentPlayer(label="Ellen",   player_factory=ev3),
-        TournamentPlayer(label="Chadd",   player_factory=CoverageBot),
-        TournamentPlayer(label="Carli",   player_factory=CoverageBot),
-        TournamentPlayer(label="Iggy",    player_factory=ImpatientBot),
-        TournamentPlayer(label="Izzy",    player_factory=ImpatientBot),
-        TournamentPlayer(label="Madison", player_factory=MarathonBot),
-        TournamentPlayer(label="Michael", player_factory=MarathonBot),
-    ]
+    """24-player field: 3 of each of 8 bot families.
 
+    Families and representatives:
+      Random      — Rascal, Rebeka, Rex
+      Thoughtful  — Tim, Tay, Thea
+      Marathon    — Madison, Michael, Mia
+      Impatient   — Iggy, Izzy, Iris
+      EV(N=3)     — Edgar, Ellen, Evan
+      Coverage    — Chadd, Carli, Casey
+      Fromage     — Felicity, Franklin, Fiona
+      Kinematic   — Kim, Kourtney, Khloe  (a=0.45, offset=1: best sweep result)
 
-def _kinematic_tournament_field() -> list[TournamentPlayer]:
-    """26-player field: 12 KinematicBots (6 best-performing (a, offset) cells
-    from a prior 72-player sweep × 2 each) + 14 benchmark bots (2 each of
-    Bot, ThoughtfulBot, EVBot, CoverageBot, ImpatientBot, MarathonBot, FromageBot).
-
-    Selected cells (a, offset) by win rate in sweep:
-      (0.45, 1): 48.1%   (0.30, 2): 45.6%   (0.20, 2): 45.0%
-      (0.45, 0): 44.4%   (0.30, 1): 44.4%   (0.20, 1): 43.1%
-
-    High-a values (0.60–0.90) and offset=4 at high-a were excluded;
-    they produce pathological behaviour (turns-to-win > 120).
+    24 players divides evenly into pairs (12), triples (8), and quads (6),
+    satisfying the Swiss tournament mod-12 requirement.
     """
-    cells = [
-        (0.45, 1),
-        (0.30, 2),
-        (0.20, 2),
-        (0.45, 0),
-        (0.30, 1),
-        (0.20, 1),
-    ]
-
-    entries: list[TournamentPlayer] = []
-    for a, offset in cells:
-        a_tag = f"{int(a * 100):02d}"
-        o_tag = f"m{abs(offset)}" if offset < 0 else f"{offset:02d}"
-        factory = make_kinematic_bot(a, offset)
-        entries.append(TournamentPlayer(label=f"KLONE-{a_tag}-{o_tag}", player_factory=factory))
-        entries.append(TournamentPlayer(label=f"KOPPY-{a_tag}-{o_tag}", player_factory=factory))
-
     ev3 = make_evbot(3)
-    entries += [
-        TournamentPlayer(label="Rascal",  player_factory=Bot),
-        TournamentPlayer(label="Rebeka",  player_factory=Bot),
-        TournamentPlayer(label="Tim",     player_factory=ThoughtfulBot),
-        TournamentPlayer(label="Tay",     player_factory=ThoughtfulBot),
-        TournamentPlayer(label="Edgar",   player_factory=ev3),
-        TournamentPlayer(label="Ellen",   player_factory=ev3),
-        TournamentPlayer(label="Chadd",   player_factory=CoverageBot),
-        TournamentPlayer(label="Carli",   player_factory=CoverageBot),
-        TournamentPlayer(label="Iggy",     player_factory=ImpatientBot),
-        TournamentPlayer(label="Izzy",     player_factory=ImpatientBot),
+    k45 = make_kinematic_bot(0.45, 1)
+    return [
+        TournamentPlayer(label="Rascal",   player_factory=Bot),
+        TournamentPlayer(label="Rebeka",   player_factory=Bot),
+        TournamentPlayer(label="Rex",      player_factory=Bot),
+        TournamentPlayer(label="Tim",      player_factory=ThoughtfulBot),
+        TournamentPlayer(label="Tay",      player_factory=ThoughtfulBot),
+        TournamentPlayer(label="Thea",     player_factory=ThoughtfulBot),
         TournamentPlayer(label="Madison",  player_factory=MarathonBot),
         TournamentPlayer(label="Michael",  player_factory=MarathonBot),
+        TournamentPlayer(label="Mia",      player_factory=MarathonBot),
+        TournamentPlayer(label="Iggy",     player_factory=ImpatientBot),
+        TournamentPlayer(label="Izzy",     player_factory=ImpatientBot),
+        TournamentPlayer(label="Iris",     player_factory=ImpatientBot),
+        TournamentPlayer(label="Edgar",    player_factory=ev3),
+        TournamentPlayer(label="Ellen",    player_factory=ev3),
+        TournamentPlayer(label="Evan",     player_factory=ev3),
+        TournamentPlayer(label="Chadd",    player_factory=CoverageBot),
+        TournamentPlayer(label="Carli",    player_factory=CoverageBot),
+        TournamentPlayer(label="Casey",    player_factory=CoverageBot),
         TournamentPlayer(label="Felicity", player_factory=FromageBot),
         TournamentPlayer(label="Franklin", player_factory=FromageBot),
+        TournamentPlayer(label="Fiona",    player_factory=FromageBot),
+        TournamentPlayer(label="Kim",      player_factory=k45),
+        TournamentPlayer(label="Kourtney", player_factory=k45),
+        TournamentPlayer(label="Khloe",    player_factory=k45),
     ]
-    return entries
 
 
 def main() -> None:
@@ -536,9 +514,7 @@ def main() -> None:
     parser.add_argument("--round-robin", action="store_true",
                         help="run N-horizon shootout instead of BUE vs Bot sparring")
     parser.add_argument("--swiss", action="store_true",
-                        help="run Swiss tournament with 12 named bots (3 of each type)")
-    parser.add_argument("--kinematic", action="store_true",
-                        help="run 26-player kinematic field (12 KinematicBots + 14 benchmarks)")
+                        help="run Swiss tournament with 24 named bots (3 of each of 8 families)")
     parser.add_argument("--days", type=int, default=1, metavar="N",
                         help="number of 4-round days in the Swiss tournament (default: 1)")
     parser.add_argument("--horizons", type=int, nargs="+", default=[1, 3, 5, 7],
@@ -549,10 +525,7 @@ def main() -> None:
                         help="append per-game JSONL records (decks, ERUV, bot type) to FILE")
     args = parser.parse_args()
 
-    if args.kinematic:
-        entries = _kinematic_tournament_field()
-        run_swiss_tournament(entries, n_days=args.days, stats_path=args.stats, records_path=args.records)
-    elif args.swiss:
+    if args.swiss:
         entries = _default_swiss_field()
         run_swiss_tournament(entries, n_days=args.days, stats_path=args.stats, records_path=args.records)
     elif args.round_robin:
