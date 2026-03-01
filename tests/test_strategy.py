@@ -6,8 +6,9 @@ import unittest
 from harmonictook import Blue, Green, Red, Stadium, TVStation, BusinessCenter, UpgradeCard, Game
 from strategy import (
     ONE_DIE_PROB, TWO_DIE_PROB, P_DOUBLES,
-    p_hits, portfolio_ev, delta_ev, score_purchase_options,
-    _die_pmf, _convolve, _landmark_cost_remaining,
+    p_hits, portfolio_ev, portfolio_coverage, delta_ev, delta_coverage,
+    coverage_value, score_purchase_options,
+    _die_pmf, _convolve, _landmark_cost_remaining, _prob_win_in_n_rounds,
     own_turn_pmf, opponent_turn_pmf, round_pmf,
     pmf_mean, pmf_variance, pmf_percentile, pmf_mass_at_least,
     prob_victory_within_n_rounds,
@@ -1202,3 +1203,96 @@ class TestGlicko(unittest.TestCase):
         from tournament import _glicko_update, _GLICKO_RD_MIN
         _, rd = _glicko_update(1500.0, 50.1, [(1500.0, 50.0, 0.5)] * 100)
         self.assertGreaterEqual(rd, _GLICKO_RD_MIN)
+
+
+class TestStrategyCoveragePaths(unittest.TestCase):
+    """Tests that exercise previously uncovered branches in strategy.py."""
+
+    def setUp(self):
+        self.game = Game(players=2)
+        self.player = self.game.players[0]
+        self.other  = self.game.players[1]
+        self.player.deposit(50)
+        self.other.deposit(50)
+
+    # ------------------------------------------------------------------
+    # portfolio_coverage
+    # ------------------------------------------------------------------
+    def test_portfolio_coverage_returns_float(self):
+        """portfolio_coverage sums coverage_value across the full deck."""
+        result = portfolio_coverage(self.player, self.game.players)
+        self.assertIsInstance(result, float)
+        self.assertGreater(result, 0.0)
+
+    # ------------------------------------------------------------------
+    # _turn_multiplier AP branch — exercised via coverage_value
+    # ------------------------------------------------------------------
+    def test_coverage_value_green_with_amusement_park(self):
+        """coverage_value for a Green card with Amusement Park uses the turn multiplier > 1."""
+        self.player.hasAmusementPark = True
+        card = Green("Bakery", 3, 1, 1, [2, 3])
+        card.owner = self.player
+        cov_ap = coverage_value(card, self.player, self.game.players)
+        self.player.hasAmusementPark = False
+        cov_no_ap = coverage_value(card, self.player, self.game.players)
+        self.assertGreater(cov_ap, cov_no_ap, "AP multiplier must increase coverage_value")
+
+    # ------------------------------------------------------------------
+    # delta_coverage — Red card fires on opponents' turns only
+    # ------------------------------------------------------------------
+    def test_delta_coverage_red_card_only_fires_on_opponents(self):
+        """delta_coverage for a Red card is > 0 (fires on opponents' rolls, not owner's)."""
+        cafe = Red("Cafe", 4, 2, 1, [3])
+        cafe.owner = self.player
+        result = delta_coverage(cafe, self.player, self.game.players)
+        self.assertGreater(result, 0.0, "Red card must have positive delta_coverage via opponents' rolls")
+
+    # ------------------------------------------------------------------
+    # _ev_businesscenter — no opponents in players list
+    # ------------------------------------------------------------------
+    def test_ev_businesscenter_solo_game_returns_zero(self):
+        """BC EV is 0 when the player is the only entry in the players list (no opponents)."""
+        card = BusinessCenter()
+        result = delta_ev(card, self.player, [self.player])
+        self.assertAlmostEqual(result, 0.0, places=10)
+
+    # ------------------------------------------------------------------
+    # pmf_mass_at_least — empty PMF
+    # ------------------------------------------------------------------
+    def test_pmf_mass_at_least_empty_returns_zero(self):
+        """pmf_mass_at_least on an empty PMF is 0.0 for any threshold."""
+        self.assertAlmostEqual(pmf_mass_at_least({}, 0), 0.0, places=10)
+        self.assertAlmostEqual(pmf_mass_at_least({}, 5), 0.0, places=10)
+
+    # ------------------------------------------------------------------
+    # _prob_win_in_n_rounds — n_rounds == 0 returns 0.0
+    # ------------------------------------------------------------------
+    def test_prob_win_in_n_rounds_zero_rounds_is_zero(self):
+        """No rounds remain → P(win) = 0.0."""
+        self.player.deck.deck.clear()
+        self.player.bank = 0
+        result = _prob_win_in_n_rounds(self.player, self.game.players, n_rounds=0)
+        self.assertAlmostEqual(result, 0.0, places=10)
+
+    # ------------------------------------------------------------------
+    # tuv_percentile — income ≤ 0 falls back to n_landmarks_remaining
+    # ------------------------------------------------------------------
+    def test_tuv_percentile_zero_income_returns_n_landmarks(self):
+        """When the p-th percentile income is 0, tuv_percentile returns n_landmarks_remaining."""
+        p = self.player
+        p.deck.deck.clear()
+        p.bank = 0
+        wheat = Blue("Wheat Field", 1, 1, 1, [1])
+        wheat.owner = p
+        p.deck.append(wheat)
+        # P(income=0 per round) ≈ 69.4%; median (p=0.5) is 0 → triggers income-zero fallback.
+        result = tuv_percentile(p, self.game, p=0.5)
+        self.assertEqual(result, 4.0, "With 0 median income, TUV must equal n_landmarks_remaining=4")
+
+    # ------------------------------------------------------------------
+    # score_purchase_options — empty cards list returns {}
+    # ------------------------------------------------------------------
+    def test_score_purchase_options_empty_returns_empty_dict(self):
+        """score_purchase_options with no cards returns an empty dict."""
+        result = score_purchase_options(self.player, [], self.game.players)
+        self.assertEqual(result, {})

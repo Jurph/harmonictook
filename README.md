@@ -16,9 +16,46 @@
 [![CircleCI Badge](https://circleci.com/gh/Jurph/harmonictook.svg?style=shield&circletoken=865dd863ff6582b56c01424e84fdeedfbc0e0d8e)](https://app.circleci.com/pipelines/github/Jurph/harmonictook)
 [![codecov](https://codecov.io/gh/Jurph/harmonictook/branch/main/graph/badge.svg)](https://codecov.io/gh/Jurph/harmonictook)
 
-# Latest: v0.9 Released 
+# Latest: v0.9.1 Released 
 
 The game runs in native python (3.7 and newer) with no installation required. Type `harmonictook.py` to run the game in a terminal window. Future versions may add required dependencies, if I add a GUI. You can also run `tournament.py` to test new bot strategies against each other, including a `--swiss` CLI flag that runs a seeded Swiss tournament to really find out which bot strategy is best. 
+
+# Current features 
+
+## Base Game 
+
+All of the cards work correctly, including the logic from the Business Center (card-swapping), extra turns for doubles, and re-rolling dice with the Radio Tower. Support for 2, 3, or 4 players. Hot-seat multi-player for any of the humans, and any or all players can also be bots. The human running the program gets to decide who sits where at the table. 
+
+## Pretty Good Computer Opponents! 
+
+**Lots of personalities.** Opponents now feature seven personas who play the game differently: 
+
+    - **Random** chooses entirely randomly, unless it has enough to buy a landmark (TRIVIAL)
+    - **Thoughtful** follows a hard-coded list of priorities (EASY)
+    - **Coverage** seeks to minimize the number of dice rolls that don't generate any income (MEDIUM)
+    - **EVie** tries to maximize expected value in the short run (MEDIUM)
+    - **Marathon** tries to predict the turn you'll win, and paces itself to win one turn sooner (MEDIUM)
+    - **Fromage** attempts to rapidly assemble the Ranch+Cheese engine (HARD)
+    - **Impatient** attempts to find the fastest path to victory (HARD)
+
+Machi Koro -- I mean, uh, _harmonictook_ -- has a lot of luck involved. Even the hardest bots can be beaten with decent strategy and hot dice! 
+
+**An arena where you can grow your own bots.** These bots were built by analyzing the results of `tournament.py`, which pits computer opponents against one another in a multi-day Swiss-style tournament. In the default, a field of bots divisible by 12 square off in random pairs, then seeded pairs, then triples, then staggered/striped 4-player tables. A metric called Estimated Rounds Until Victory (ERUV) is calculated at the game's conclusion, which looks at how many monuments a player still needed to buy, their costs, the player's coins, and the expected coins-per-turn the player's cards were generating; pairwise wins & losses are assessed on ERUV scores, and then Glicko scores are calculated. The `--records` and `--stats` command-line options allow per-game JSONL summaries and statistics, respectively. 
+
+## Future features
+
+- Display
+  - Create a Display() class [partial] 
+  - Add ANSI-style colored text (orange, red, green, blue, purple) for rich terminal display
+  - Add a no-foolin' GUI 
+
+- Gameplay 
+  - Consider limited-market variant where only 8 or 10 unique cards are available (until a pile is depleted)
+
+
+
+
+
 
 # The Rules
 
@@ -163,23 +200,3 @@ immediately.
 ## Example Turn: 
 
 [TODO]
-
-# Current features 
-
-- Opponents now feature seven personas:
-    - **Random** chooses entirely randomly, unless it has enough to buy a landmark (TRIVIAL)
-    - **Thoughtful** follows a hard-coded list of priorities (EASY)
-    - **Coverage** seeks to minimize the number of dice rolls that don't generate any income (MEDIUM)
-    - **EV** tries to maximize expected value, but has a limited time horizon (MEDIUM)
-    - **Marathon** tries to predict the turn you'll win, and paces itself to win one turn sooner (MEDIUM)
-    - **Fromage** attempts to rush the Ranch+Cheese engine (HARD) 
-    - **Impatient** attempts to find the fastest path to ending the game on its terms (HARD)
-
-# Future features
-
-- Display
-    - Create a Display() class [partial] 
-    - Add ANSI-style colored text (orange, red, green, blue, purple) for rich terminal display
-    - Add a no-foolin' GUI 
-
-- BUG: emoji don't correctly display in Windows terminals

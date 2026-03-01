@@ -465,9 +465,7 @@ class Stadium(Card):
         self.name = name
         self.category = 7
         self.cost = 6
-        self.recipient = 3      # Purple cards pay out to the die-roller (1)
-        self.hitsOn = [6]       # Purple cards all hit on [6]
-        self.payer = 2          # Stadium collects from all players
+        self.hitsOn = [6]
         self.payout = 2
 
     def describe(self) -> str:
