@@ -78,7 +78,7 @@ class TestMidgameIntegration(unittest.TestCase):
         # adding 1 more Wheat Field and 1 Apple Orchard brings Grain count to 3
         give(Blue("Wheat Field",   1, 1, 1, [1]))
         give(Blue("Apple Orchard", 1, 3, 3, [10]))
-        give(Green("Fruit & Vegetable Market", 8, 2, 2, [11, 12], 1))
+        give(Green("Farmer's Market", 8, 2, 2, [11, 12], 1))
 
         # Convenience Store — roll 4 pays 3 + 1 (Shopping Mall) = 4
         give(Green("Convenience Store", 3, 2, 3, [4]))
@@ -136,12 +136,12 @@ class TestMidgameIntegration(unittest.TestCase):
         self.assertEqual(self.roller.bank - before, 9)
 
     @patch('harmonictook.random.randint', side_effect=[5, 6])   # 5+6=11
-    def testFruitVegMarketMultiplier(self, _):
-        """Roll 11 with 2 Wheat Fields + 1 Apple Orchard (3 Grain): F&V Market pays 3 × 2 = 6 coins."""
+    def testFarmersMarketMultiplier(self, _):
+        """Roll 11 with 2 Wheat Fields + 1 Apple Orchard (3 Grain): Farmer's Market pays 3 × 2 = 6 coins."""
         self.game.current_player_index = 0
         before = self.roller.bank
         events = self.game.next_turn(NullDisplay())
-        payouts = [e for e in events if e.type == "payout" and e.card == "Fruit & Vegetable Market"]
+        payouts = [e for e in events if e.type == "payout" and e.card == "Farmer's Market"]
         self.assertEqual(len(payouts), 1)
         self.assertEqual(payouts[0].value, 6)
         self.assertEqual(self.roller.bank - before, 6)

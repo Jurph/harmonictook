@@ -281,13 +281,14 @@ class TestCardsAndLandmarksMarkup(unittest.TestCase):
         result = self.cards_markup(player)
         self.assertIn("[red]", result)
 
-    def test_empty_deck_returns_dash(self):
-        """A player with no establishment cards gets a — placeholder."""
+    def test_empty_deck_shows_twelve_uncovered_rows(self):
+        """A player with no establishment cards gets twelve '·' rows, one per die face."""
         game = Game(players=2)
         player = game.players[0]
         player.deck.deck.clear()
         result = self.cards_markup(player)
-        self.assertEqual(result, "—")
+        self.assertEqual(result.count("·"), 12)
+        self.assertEqual(result.count("│"), 12)
 
 
 class TestHarmonicTookAppUpdateState(unittest.IsolatedAsyncioTestCase):
@@ -305,7 +306,7 @@ class TestHarmonicTookAppUpdateState(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             content = self._panel_content(app.query_one(MarketPanel))
             self.assertIn("Wheat Field", content)
-            self.assertIn("Market", content)
+            self.assertIn("Mkt", content)
 
     async def test_update_state_sets_player_names(self):
         """Each PlayerPanel contains the corresponding player's name."""

@@ -675,7 +675,7 @@ class TableDeck(Store):
             self.append(Blue("Mine",5,6,5,[9]))
             self.append(Red("Family Restaurant",4,3,2,[9,10]))
             self.append(Blue("Apple Orchard",1,3,3,[10]))
-            self.append(Green("Fruit & Vegetable Market",8,2,2,[11,12],1))
+            self.append(Green("Farmer's Market",8,2,2,[11,12],1))
         self.append(TVStation())
         self.append(BusinessCenter())
         self.append(Stadium())

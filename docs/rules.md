@@ -94,7 +94,7 @@ players once they are at 0 coins. Banks never go negative.
 | Convenience Store         | 4      | 3 (+1 with Shopping Mall)                   |
 | Cheese Factory            | 7      | 3 × number of Ranch cards you own           |
 | Furniture Factory         | 8      | 3 × number of Gear (Forest/Mine) cards      |
-| Fruit & Vegetable Market  | 11–12  | 2 × number of Grain (Wheat/Orchard) cards   |
+| Farmer's Market           | 11–12  | 2 × number of Grain (Wheat/Orchard) cards   |
 
 ### Red — pays card owner from active player
 

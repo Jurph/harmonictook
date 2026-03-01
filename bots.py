@@ -189,7 +189,7 @@ class ThoughtfulBot(Bot):
     _FACTORY_PREREQS: dict[str, tuple[int, int]] = {
         "Cheese Factory":           (2, 1),  # category 2 = Ranch
         "Furniture Factory":        (5, 1),  # category 5 = Forest / Mine
-        "Fruit & Vegetable Market": (1, 1),  # category 1 = Wheat Field / Apple Orchard
+        "Farmer's Market":          (1, 1),  # category 1 = Wheat Field / Apple Orchard
     }
 
     def chooseCard(self, options: list[Card], game: Game | None = None) -> str | None:
@@ -209,7 +209,7 @@ class ThoughtfulBot(Bot):
         ]
         latecards = [
             "Mine", "Furniture Factory", "Cheese Factory",
-            "Family Restaurant", "Apple Orchard", "Fruit & Vegetable Market",
+            "Family Restaurant", "Apple Orchard", "Farmer's Market",
         ]
         if self.hasTrainStation:
             eligible_latecards = [
@@ -453,7 +453,7 @@ class FromageBot(Bot):
         ("Business Center",          1),
         ("Stadium",                  1),
         ("Cafe",                     1),
-        ("Fruit & Vegetable Market", 2),
+        ("Farmer's Market",          2),
     ]
 
     def _count(self, name: str) -> int:
