@@ -42,9 +42,9 @@ Minimum terminal size: 120×40. Layout divides player columns equally by N.
 - `color_tui.py`: `ColorTUIDisplay(Display)` with all ABC methods stubbed
 - `tests/test_color_tui.py`: instantiation, subclass check, stub behavior, import safety
 
-### Commit 2 — Static layout
+### ✅ Commit 2 — Static layout
 - `MachiKoroApp(App)` in `color_tui.py` with hardcoded placeholder text
-- `--tui` flag (or `python color_tui.py`) renders the layout visually
+- `python color_tui.py` renders the layout visually
 - No game logic; no Display protocol wiring yet
 
 ### Commit 3 — `show_state()` populates panels
