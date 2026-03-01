@@ -52,7 +52,7 @@ Minimum terminal size: 120×40. Layout divides player columns equally by N.
 - Threading bridge not yet needed (push only, no return value)
 - Tested via Textual's `App.run_test()` headless mode
 
-### Commit 4 — `show_events()` feeds the event log
+### ✅ Commit 4 — `show_events()` feeds the event log
 - Events render into the scrolling log panel
 - Tested: feed known `Event` objects, assert text appears in log widget
 

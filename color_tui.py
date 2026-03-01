@@ -124,6 +124,68 @@ def _landmarks_markup(player: object) -> str:
     return " ".join("●" if f else "○" for f in flags)
 
 
+def _event_to_str(event: Event) -> str | None:  # noqa: C901
+    """Convert a game Event to a log string, or None if the event is silent in the TUI."""
+    t = event.type
+    if t == "turn_start":
+        return f"--- {event.player}'s turn ---"
+    if t == "roll":
+        return f"{event.player} rolled a {event.value}."
+    if t == "reroll":
+        return f"{event.player} uses the Radio Tower to re-roll!"
+    if t == "card_activates":
+        return f"{event.player}'s {event.card} activates on a {event.value}..."
+    if t == "payout":
+        return f"{event.card} pays out {event.value} to {event.player}."
+    if t == "payout_skip":
+        return f"{event.player} didn't roll the dice — no payout from {event.card}."
+    if t == "factory_count":
+        return f"{event.player} has {event.value} cards of type {event.card_type}..."
+    if t == "steal":
+        return f"{event.player} collected {event.value} coins from {event.target}."
+    if t == "steal_activate":
+        return f"{event.player} activates TV Station!"
+    if t == "steal_target":
+        return f"{event.player} targets {event.target}!"
+    if t == "steal_no_target":
+        return "No valid targets for TV Station."
+    if t == "steal_skip":
+        return "TV Station doesn't activate (not die roller's turn)."
+    if t == "collect":
+        return None  # Stadium collects are silent
+    if t == "bc_activate":
+        return f"{event.player} activates Business Center!"
+    if t == "bc_bot_payout":
+        return f"{event.player} gets {event.value} coins (no swap)."
+    if t == "bc_swap":
+        return f"Swapped {event.card} for {event.target}'s {event.message}."
+    if t == "bc_no_cards":
+        return "Not enough swappable cards."
+    if t == "bc_no_target":
+        return "No valid swap target."
+    if t == "bc_skip":
+        return "Business Center doesn't activate (not die roller's turn)."
+    if t == "bank_status":
+        return f"{event.player} now has {event.value} coins."
+    if t == "deck_state":
+        return None  # panel shows deck state visually; no log entry needed
+    if t == "buy":
+        return (f"{event.player} bought {event.card} for {event.value} coins, "
+                f"and now has {event.remaining_bank} coins.")
+    if t == "buy_failed":
+        return (f"Sorry: {event.card} costs {event.value} "
+                f"and {event.player} only has {event.remaining_bank}.")
+    if t == "buy_not_found":
+        return f"Sorry: we don't have anything called '{event.card}'."
+    if t == "pass":
+        return f"{event.player} passes this turn."
+    if t == "win":
+        return f"{event.player} wins!"
+    if t == "doubles_bonus":
+        return f"{event.player} rolled doubles and gets to go again!"
+    return None  # unknown event type — fail silently
+
+
 # ── App ───────────────────────────────────────────────────────────────────────
 
 class HarmonicTookApp(App):
@@ -166,6 +228,14 @@ class HarmonicTookApp(App):
             for line in _PLACEHOLDER_EVENTS:
                 log.write(line)
 
+    def add_events(self, events: list[Event]) -> None:
+        """Write renderable events to the EventLog; silent events are dropped."""
+        log = self.query_one(EventLog)
+        for event in events:
+            text = _event_to_str(event)
+            if text is not None:
+                log.write(text)
+
     def update_state(self, game: Game) -> None:
         """Repopulate all panels from current game state. Safe to call from any thread."""
         market = game.get_market_state()
@@ -203,7 +273,12 @@ class ColorTUIDisplay(Display):
         self.app = app
 
     def show_events(self, events: list[Event]) -> None:
-        raise NotImplementedError("ColorTUIDisplay.show_events() not yet implemented")
+        if self.app is None:
+            raise RuntimeError(
+                "ColorTUIDisplay.show_events() requires an app — "
+                "pass app=HarmonicTookApp() to the constructor"
+            )
+        self.app.add_events(events)
 
     def show_state(self, game: Game) -> None:
         if self.app is None:

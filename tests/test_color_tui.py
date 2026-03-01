@@ -22,9 +22,9 @@ class TestColorTUIDisplaySkeleton(unittest.TestCase):
         """ColorTUIDisplay is a subclass of Display."""
         self.assertTrue(issubclass(self.cls, Display))
 
-    def test_show_events_raises_not_implemented(self):
-        """show_events() raises NotImplementedError until Commit 4 lands."""
-        with self.assertRaises(NotImplementedError):
+    def test_show_events_raises_runtime_error_without_app(self):
+        """show_events() raises RuntimeError when no app has been connected."""
+        with self.assertRaises(RuntimeError):
             self.cls().show_events([Event(type="roll", player="A", value=3)])
 
     def test_show_state_raises_runtime_error_without_app(self):
@@ -174,6 +174,59 @@ class TestHarmonicTookAppLayout(unittest.IsolatedAsyncioTestCase):
             self.assertGreaterEqual(len(log.lines), len(_PLACEHOLDER_EVENTS))
 
 
+class TestEventToStr(unittest.TestCase):
+    """_event_to_str() converts Event objects to log strings or None for silent events."""
+
+    def setUp(self):
+        from color_tui import _event_to_str  # noqa: PLC0415
+        self.to_str = _event_to_str
+
+    def test_roll_contains_player_and_value(self):
+        """Roll event string names the player and includes the die value."""
+        result = self.to_str(Event(type="roll", player="Alice", value=6))
+        self.assertIn("Alice", result)
+        self.assertIn("6", result)
+
+    def test_payout_contains_card_player_and_amount(self):
+        """Payout event string names the card, player, and coin amount."""
+        result = self.to_str(Event(type="payout", card="Ranch", player="Bob", value=2))
+        self.assertIn("Ranch", result)
+        self.assertIn("Bob", result)
+        self.assertIn("2", result)
+
+    def test_buy_contains_card_and_price(self):
+        """Buy event string names the card purchased and the price paid."""
+        result = self.to_str(Event(type="buy", player="Alice", card="Forest",
+                                   value=3, remaining_bank=7))
+        self.assertIn("Forest", result)
+        self.assertIn("3", result)
+
+    def test_win_contains_player_name(self):
+        """Win event string names the winner."""
+        result = self.to_str(Event(type="win", player="Carol"))
+        self.assertIn("Carol", result)
+
+    def test_pass_contains_player_name(self):
+        """Pass event string names the player who passed."""
+        result = self.to_str(Event(type="pass", player="Bob"))
+        self.assertIn("Bob", result)
+
+    def test_collect_is_silent(self):
+        """Stadium collect events return None — they are silent in the TUI."""
+        self.assertIsNone(self.to_str(Event(type="collect", player="Alice", value=2)))
+
+    def test_deck_state_is_silent(self):
+        """Deck state events return None — the panel shows deck state visually."""
+        self.assertIsNone(self.to_str(Event(type="deck_state", message="some table")))
+
+    def test_unknown_event_type_is_silent(self):
+        """Unrecognised event types return None rather than raising."""
+        import dataclasses  # noqa: PLC0415
+        e = Event(type="roll", player="X", value=1)
+        e = dataclasses.replace(e, type="totally_unknown")  # type: ignore[arg-type]
+        self.assertIsNone(self.to_str(e))
+
+
 class TestCardsAndLandmarksMarkup(unittest.TestCase):
     """_cards_markup() and _landmarks_markup() reflect actual player deck state."""
 
@@ -311,6 +364,74 @@ class TestHarmonicTookAppUpdateState(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             content = self._panel_content(app.query_one(MarketPanel))
             self.assertIn("Wheat Field", content)
+
+
+class TestHarmonicTookAppAddEvents(unittest.IsolatedAsyncioTestCase):
+    """HarmonicTookApp.add_events() and ColorTUIDisplay.show_events() feed the EventLog."""
+
+    async def test_single_event_adds_to_log(self):
+        """A single renderable event adds exactly one line to the EventLog."""
+        from color_tui import HarmonicTookApp, EventLog  # noqa: PLC0415
+        app = HarmonicTookApp()
+        async with app.run_test(size=(120, 40)) as pilot:
+            before = len(app.query_one(EventLog).lines)
+            app.add_events([Event(type="roll", player="Alice", value=4)])
+            await pilot.pause()
+            self.assertEqual(len(app.query_one(EventLog).lines), before + 1)
+
+    def _line_text(self, log: object) -> str:
+        """Flatten all rendered EventLog lines into a single searchable string."""
+        return " ".join(
+            "".join(seg.text for seg in strip)
+            for strip in log.lines  # type: ignore[attr-defined]
+        )
+
+    async def test_event_text_appears_in_log(self):
+        """The player name from a roll event is visible in the rendered EventLog."""
+        from color_tui import HarmonicTookApp, EventLog  # noqa: PLC0415
+        app = HarmonicTookApp()
+        async with app.run_test(size=(120, 40)) as pilot:
+            app.add_events([Event(type="roll", player="Zephyr", value=5)])
+            await pilot.pause()
+            self.assertIn("Zephyr", self._line_text(app.query_one(EventLog)))
+
+    async def test_silent_event_does_not_add_to_log(self):
+        """A silent event (collect) does not add a line to the EventLog."""
+        from color_tui import HarmonicTookApp, EventLog  # noqa: PLC0415
+        app = HarmonicTookApp()
+        async with app.run_test(size=(120, 40)) as pilot:
+            before = len(app.query_one(EventLog).lines)
+            app.add_events([Event(type="collect", player="Alice", value=3)])
+            await pilot.pause()
+            self.assertEqual(len(app.query_one(EventLog).lines), before)
+
+    async def test_mixed_batch_only_adds_renderable_events(self):
+        """A batch with silent and renderable events adds only renderable ones."""
+        from color_tui import HarmonicTookApp, EventLog  # noqa: PLC0415
+        app = HarmonicTookApp()
+        async with app.run_test(size=(120, 40)) as pilot:
+            before = len(app.query_one(EventLog).lines)
+            app.add_events([
+                Event(type="roll",    player="Alice", value=3),   # renderable
+                Event(type="collect", player="Alice", value=2),   # silent
+                Event(type="payout",  card="Ranch", player="Alice", value=1),  # renderable
+            ])
+            await pilot.pause()
+            self.assertEqual(len(app.query_one(EventLog).lines), before + 2)
+
+    async def test_show_events_via_display_appends_to_log(self):
+        """ColorTUIDisplay.show_events() routes through add_events() to the log."""
+        from color_tui import HarmonicTookApp, ColorTUIDisplay, EventLog  # noqa: PLC0415
+        game = Game(players=2)
+        app = HarmonicTookApp(game=game)
+        display = ColorTUIDisplay(app=app)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            before = len(app.query_one(EventLog).lines)
+            display.show_events([Event(type="pass", player="Bot1")])
+            await pilot.pause()
+            self.assertEqual(len(app.query_one(EventLog).lines), before + 1)
+            self.assertIn("Bot1", self._line_text(app.query_one(EventLog)))
 
 
 if __name__ == "__main__":
