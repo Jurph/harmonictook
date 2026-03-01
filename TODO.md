@@ -16,6 +16,20 @@
 - "--fast" mode to suppress verbose output
 - `LogDisplay` — writes events to file (for statistics and replay)
 
+#### Requirements for Curses game display
+ - Doesn't have to run natively - since text-only is native, we could skip curses and use rich or asciimatics 
+ - Frame buffer that is redrawn (no more scrolling text)
+ - Top half of window: each player's name, coin total, and board are shown, with landmarks indicated 
+ - Active player is outlined in white, the others in light gray 
+ - Middle 2/6 of window: available cards are shown (in a way that lets us see, or infer, stack size)
+ - Bottom 1/6 of window: choices for keyboard input 
+ - Dice show pips in the player's window; ideally the die or dice "tumble" between values before settling 
+ - Once dice roll, ideally we'd see (e.g.) "+3" linger brightly over each player's total then settle back to their total number, or "-3" over one player and "+3" over another at the same time - animations can be for later  
+ - Can curses correctly display emoji? If so, let's pick emoji and wrap them in ASCII line borders per card (so each card would be 3x3 or 3x4 chars). 
+ - Player display should indicate *at least* what rolls each card(s) trigger on; if there's room, payout too
+ - Market display should visually indicate color and cards remaining, and textually indicate hits-on and pays-out values 
+ - For players who haven't bought them, the landmarks should be visible in the marketplace 
+
 ### Meta-Game Features
 - Statistics tracking (win rates, average game length, card value analysis)
 - Export game logs for analysis

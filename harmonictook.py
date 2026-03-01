@@ -65,6 +65,7 @@ class Player(object):
         self.isrollingdice = False
         self.bank = 3                  # Everyone starts with 3 coins
         self.deck = PlayerDeck(self)
+        self.display: Display | None = None
         self.hasTrainStation = False
         self.hasShoppingMall = False
         self.hasAmusementPark = False
@@ -191,75 +192,76 @@ class Player(object):
         otherPlayer.deck.append(card)
 
 class Human(Player):
-    """Interactive player subclass that prompts for all decisions via stdin."""
+    """Interactive player subclass that delegates all I/O to self.display.
+
+    self.display is set by Game.run() before the first turn. All decision
+    methods use the Display's pick_one, confirm, and show_info primitives
+    so that any Display implementation (terminal, TUI, GUI) can drive Human play.
+    """
 
     def chooseAction(self, availableCards: Store) -> str:
         """Prompt the human for a turn action; returns 'buy' or 'pass'."""
+        d = self.display
+        actions = ["Buy a card", "Pass", "Show available cards"]
         while True:
-            action = input("[B]uy a card, [P]ass, or [S]how available cards? ").lower()
-            if 'b' in action:
+            choice = d.pick_one(actions, prompt="Your action: ")
+            if choice == "Buy a card":
                 return 'buy'
-            elif 'p' in action:
+            elif choice == "Pass":
                 return 'pass'
-            elif 's' in action:
-                print("\n-=-= Available Cards =-=-")
-                print(deck_to_string(availableCards))
-                continue
-            else:
-                print("Please enter B, P, or S.")
+            elif choice == "Show available cards":
+                d.show_info(f"\n-=-= Available Cards =-=-\n{deck_to_string(availableCards)}")
 
     def chooseCard(self, options: list[Card], game: Game | None = None) -> str | None:
-        """Prompt the human to pick a card from a list of Card objects.
-
-        Displays a rich table when game is supplied; plain numbered list otherwise.
-        """
+        """Prompt the human to pick a Card from a list of Card objects."""
         if not options:
-            print("Oh no - no valid purchase options this turn.")
+            self.display.show_info("Oh no - no valid purchase options this turn.")
             return None
-        if game is not None:
-            return utility.card_menu(options)
-        return utility.userChoice([c.name for c in options])
+        def _card_label(c: Card) -> str:
+            rolls = "—" if c.hitsOn == [99] else ", ".join(str(r) for r in c.hitsOn)
+            return f"{c.name:<25} {c.cost:>3}   [{rolls:<10}]  {c.describe()}"
+        self.display.show_info("  -=-= Buy a Card =-=-")
+        card = self.display.pick_one(options, prompt="Your selection: ", formatter=_card_label)
+        return card.name
 
     def chooseDice(self, players: list | None = None) -> int:
         """Prompt the human (if they own Train Station) to choose 1 or 2 dice; default is 1."""
-        dice = 1
-        if self.hasTrainStation:
-            while True:
-                try:
-                    dice = int(input("Roll [1] or [2] dice?  "))
-                    if 1 <= dice <= 2:
-                        break
-                    else:
-                        print("Sorry: please enter 1 or 2.")
-                except ValueError:
-                    print("Sorry: please enter 1 or 2.")
-        return dice
+        if not self.hasTrainStation:
+            return 1
+        return self.display.pick_one([1, 2], prompt="Roll how many dice? ")
 
     def chooseReroll(self, last_roll: int | None = None) -> bool:
-        """Prompt the human to use the Radio Tower re-roll if they own it; returns their decision."""
-        if self.hasRadioTower:
-            choice = input("Use Radio Tower to re-roll? ([Y]es / [N]o) ")
-            if "y" in choice.lower():
-                return True
-        return False
+        """Prompt the human to use the Radio Tower re-roll if they own it."""
+        if not self.hasRadioTower:
+            return False
+        return self.display.confirm("Use Radio Tower to re-roll? ([Y]es / [N]o) ")
 
     def chooseTarget(self, players: list[Player]) -> Player | None:
-        """Prompt the human to pick a target from non-rolling players; returns the chosen player or None."""
+        """Prompt the human to pick a target from non-rolling players."""
         valid_targets = [p for p in players if not p.isrollingdice]
         if not valid_targets:
             return None
-        print("Choose a target player:")
-        for i, player in enumerate(valid_targets):
-            print(f"[{i+1}] {player.name} ({player.bank} coins)")
-        while True:
-            try:
-                choice = int(input("Your selection: "))
-                if 1 <= choice <= len(valid_targets):
-                    return valid_targets[choice - 1]
-                else:
-                    print("Invalid choice. Try again.")
-            except ValueError:
-                print("Please enter a number.")
+        return self.display.pick_one(
+            valid_targets,
+            prompt="Choose a target: ",
+            formatter=lambda p: f"{p.name} ({p.bank} coins)",
+        )
+
+    def chooseBusinessCenterSwap(
+        self, target: Player, my_swappable: list, their_swappable: list
+    ) -> tuple[Card, Card] | None:
+        """Prompt the human to choose cards for a Business Center swap, or decline."""
+        if not my_swappable or not their_swappable:
+            return None
+        if not self.display.confirm("Do you want to swap cards? ([Y]es / [N]o) "):
+            return None
+        self.display.show_info("Choose your card to give away:")
+        card_to_give = self.display.pick_one(
+            my_swappable, formatter=lambda c: c.name)
+        self.display.show_info(f"Choose {target.name}'s card to take:")
+        card_to_take = self.display.pick_one(
+            their_swappable, formatter=lambda c: c.name)
+        return (card_to_give, card_to_take)
 
 class Bot(Player):
     """Simple automated player that buys affordable cards at random."""
@@ -536,53 +538,29 @@ class BusinessCenter(Card):
         dieroller = get_die_roller(players)
         if self.owner == dieroller:
             events.append(Event(type="bc_activate", player=self.owner.name))
-            if not isinstance(dieroller, Human):
-                # Bot: choose target and swap via chooseBusinessCenterSwap, or take 5 coins
-                target = dieroller.chooseTarget(players)
-                if target and len(target.deck.deck) > 0:
-                    my_cards = [c for c in dieroller.deck.deck if not isinstance(c, UpgradeCard)]
-                    their_cards = [c for c in target.deck.deck if not isinstance(c, UpgradeCard)]
-                    swap_result = dieroller.chooseBusinessCenterSwap(
-                        target, my_cards, their_cards
-                    )
-                    if swap_result:
-                        card_to_give, card_to_take = swap_result
-                        dieroller.swap(card_to_give, target, card_to_take)
-                        events.append(
-                            Event(
-                                type="bc_swap",
-                                player=dieroller.name,
-                                card=card_to_give.name,
-                                target=target.name,
-                                message=card_to_take.name,
-                            )
-                        )
-                    else:
-                        dieroller.deposit(5)
-                        events.append(Event(type="bc_bot_payout", player=dieroller.name, value=5))
+            target = dieroller.chooseTarget(players)
+            if target and len(target.deck.deck) > 0:
+                my_cards = [c for c in dieroller.deck.deck if not isinstance(c, UpgradeCard)]
+                their_cards = [c for c in target.deck.deck if not isinstance(c, UpgradeCard)]
+                swap_result = dieroller.chooseBusinessCenterSwap(
+                    target, my_cards, their_cards
+                )
+                if swap_result:
+                    card_to_give, card_to_take = swap_result
+                    dieroller.swap(card_to_give, target, card_to_take)
+                    events.append(Event(
+                        type="bc_swap",
+                        player=dieroller.name,
+                        card=card_to_give.name,
+                        target=target.name,
+                        message=card_to_take.name,
+                    ))
                 else:
                     dieroller.deposit(5)
                     events.append(Event(type="bc_bot_payout", player=dieroller.name, value=5))
             else:
-                swap_choice = input("Do you want to swap cards? ([Y]es / [N]o) ")
-                if "y" in swap_choice.lower():
-                    target = dieroller.chooseTarget(players)
-                    if target and len(target.deck.deck) > 0:
-                        print("Choose your card to give away:")
-                        my_cards = [c for c in dieroller.deck.deck if not isinstance(c, UpgradeCard)]
-                        their_cards = [c for c in target.deck.deck if not isinstance(c, UpgradeCard)]
-                        if my_cards and their_cards:
-                            my_card = utility.userChoice([c.name for c in my_cards])
-                            my_card_obj = [c for c in my_cards if c.name == my_card][0]
-                            print(f"Choose {target.name}'s card to take:")
-                            their_card = utility.userChoice([c.name for c in their_cards])
-                            their_card_obj = [c for c in their_cards if c.name == their_card][0]
-                            dieroller.swap(my_card_obj, target, their_card_obj)
-                            events.append(Event(type="bc_swap", player=dieroller.name, card=my_card, target=target.name, message=their_card))
-                        else:
-                            events.append(Event(type="bc_no_cards"))
-                    else:
-                        events.append(Event(type="bc_no_target"))
+                dieroller.deposit(5)
+                events.append(Event(type="bc_bot_payout", player=dieroller.name, value=5))
         else:
             events.append(Event(type="bc_skip"))
         return events
@@ -808,12 +786,35 @@ def deck_to_string(deckObject: Store) -> str:
 
 
 class Display(ABC):
-    """Abstract base class for all game renderers."""
+    """Abstract base class for all game renderers.
+
+    Output: show_events renders game events.
+    Input:  pick_one, confirm, and show_info provide the primitives for
+            Human player interaction. Any Display implementation that
+            supports human play must implement all three.
+    """
 
     @abstractmethod
     def show_events(self, events: list[Event]) -> None:
         """Render a list of game events."""
         ...
+
+    def pick_one(self, options: list, prompt: str = "Your selection: ",
+                 formatter: callable = str) -> object:
+        """Present options to the user and return the chosen item.
+
+        formatter(item) is called to produce the display string for each option.
+        Returns the original item (not the formatted string).
+        """
+        raise NotImplementedError("This display does not support human input")
+
+    def confirm(self, prompt: str) -> bool:
+        """Ask the user a yes/no question; return True for yes, False for no."""
+        raise NotImplementedError("This display does not support human input")
+
+    def show_info(self, content: str) -> None:
+        """Display informational text to the user (no response expected)."""
+        raise NotImplementedError("This display does not support human input")
 
 
 class TerminalDisplay(Display):
@@ -879,6 +880,34 @@ class TerminalDisplay(Display):
             print(f"{event.player} wins!")
         elif t == "doubles_bonus":
             print(f"{event.player} rolled doubles and gets to go again!")
+
+    def pick_one(self, options: list, prompt: str = "Your selection: ",
+                 formatter: callable = str) -> object:
+        """Numbered menu via stdin; returns the chosen item."""
+        for i, item in enumerate(options, 1):
+            print(f"[{i}] {formatter(item)}")
+        while True:
+            try:
+                j = int(input(prompt))
+                if 1 <= j <= len(options):
+                    return options[j - 1]
+                print(f"Please enter a number between 1 and {len(options)}.")
+            except ValueError:
+                print("Please enter a number.")
+
+    def confirm(self, prompt: str) -> bool:
+        """Y/N prompt via stdin."""
+        while True:
+            choice = input(prompt).lower()
+            if "y" in choice:
+                return True
+            if "n" in choice:
+                return False
+            print("Please enter Y or N.")
+
+    def show_info(self, content: str) -> None:
+        """Print informational text to stdout."""
+        print(content)
 
 
 class NullDisplay(Display):
@@ -1064,6 +1093,8 @@ class Game:
         """Run the game loop until a player wins."""
         if display is None:
             display = TerminalDisplay()
+        for p in self.players:
+            p.display = display
         while True:
             for i, turntaker in enumerate(self.players):
                 self.current_player_index = i

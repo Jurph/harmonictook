@@ -1,122 +1,90 @@
 #!/usr/bin/python3
 # -*- coding: UTF-8 -*-
-# tests/test_user_interactions.py — Human player input tests
+# tests/test_user_interactions.py — Human player input tests via Display primitives
 
 import unittest
 from unittest.mock import patch
-from harmonictook import Game, Human, Bot, Blue
+from harmonictook import Game, Human, Bot, Blue, TerminalDisplay
 
 
-class TestUserInteractions(unittest.TestCase):
-    """Tests for Human player input-driven decision methods."""
+def _human_with_display(name: str = "TestHuman") -> Human:
+    """Create a Human with a TerminalDisplay wired up (as Game.run() would do)."""
+    h = Human(name=name)
+    h.display = TerminalDisplay()
+    return h
 
-    def testHumanChooseDice(self):
-        """Verify Human.chooseDice() reads input when Train Station is owned and returns the chosen value."""
-        human = Human(name="TestHuman")
+
+class TestHumanChooseDice(unittest.TestCase):
+    """Human.chooseDice delegates to display.pick_one([1, 2])."""
+
+    def test_picks_two_dice(self):
+        human = _human_with_display()
         human.hasTrainStation = True
         with patch('builtins.input', return_value='2'):
             self.assertEqual(human.chooseDice(), 2)
+
+    def test_picks_one_die(self):
+        human = _human_with_display()
+        human.hasTrainStation = True
         with patch('builtins.input', return_value='1'):
             self.assertEqual(human.chooseDice(), 1)
 
-    def testHumanChooseReroll(self):
-        """Verify Human.chooseReroll() returns True for 'y' and False for 'n' when Radio Tower is owned."""
-        human = Human(name="TestHuman")
-        human.hasRadioTower = True
-        with patch('builtins.input', return_value='y'):
-            self.assertTrue(human.chooseReroll())
-        with patch('builtins.input', return_value='n'):
-            self.assertFalse(human.chooseReroll())
+    def test_no_train_station_always_one(self):
+        human = _human_with_display()
+        self.assertEqual(human.chooseDice(), 1)
 
-    def testHumanChooseTarget(self):
-        """Verify Human.chooseTarget() returns the player at the chosen index from valid targets."""
-        human = Human(name="TestHuman")
-        bot = Bot(name="TestBot")
-        human.isrollingdice = True
-        bot.isrollingdice = False
-        with patch('builtins.input', return_value='1'):
-            result = human.chooseTarget([human, bot])
-        self.assertIs(result, bot)
-
-    def testHumanChooseAction(self):
-        """Verify Human.chooseAction() returns 'buy' for 'b' and 'pass' for 'p'."""
-        availableCards = Game(players=2).market
-        human = Human(name="TestHuman")
-        with patch('builtins.input', return_value='b'):
-            self.assertEqual(human.chooseAction(availableCards), 'buy')
-        with patch('builtins.input', return_value='p'):
-            self.assertEqual(human.chooseAction(availableCards), 'pass')
-
-    @patch('builtins.print')
-    def testHumanChooseActionShowCards(self, mock_print):
-        """Verify chooseAction() displays the market on 's' and then loops back for a real choice."""
-        availableCards = Game(players=2).market
-        human = Human(name="TestHuman")
-        with patch('builtins.input', side_effect=['s', 'b']):
-            result = human.chooseAction(availableCards)
-        self.assertEqual(result, 'buy')
-
-    @patch('builtins.print')
-    def testHumanChooseActionUnknownInput(self, mock_print):
-        """Verify chooseAction() prints an error and loops when input contains no valid key."""
-        availableCards = Game(players=2).market
-        human = Human(name="TestHuman")
-        with patch('builtins.input', side_effect=['x', 'p']):
-            result = human.chooseAction(availableCards)
-        self.assertEqual(result, 'pass')
-
-    def testHumanChooseCardEmpty(self):
-        """Verify Human.chooseCard() returns None when the options list is empty."""
-        human = Human(name="TestHuman")
-        self.assertIsNone(human.chooseCard([]))
-
-    def testHumanChooseCardPicked(self):
-        """Verify Human.chooseCard() returns the value from userChoice when options are available."""
-        human = Human(name="TestHuman")
-        ranch = Blue("Ranch", 2, 1, 1, [2])
-        wheat = Blue("Wheat Field", 1, 1, 1, [1])
-        with patch('harmonictook.utility.userChoice', return_value='Ranch'):
-            result = human.chooseCard([ranch, wheat])
-        self.assertEqual(result, 'Ranch')
-
-    @patch('builtins.print')
-    def testHumanChooseCardWithMarket(self, mock_print):
-        """Verify Human.chooseCard() uses card_menu (rich table) when a market is supplied."""
-        from harmonictook import Game
-        game = Game(players=2)
-        human = Human(name="TestHuman")
-        ranch = Blue("Ranch", 2, 1, 1, [2])
-        wheat = Blue("Wheat Field", 1, 1, 1, [1])
-        options = [ranch, wheat]
-        with patch('harmonictook.utility.card_menu', return_value='Ranch') as mock_menu:
-            result = human.chooseCard(options, game)
-        mock_menu.assert_called_once_with(options)
-        self.assertEqual(result, 'Ranch')
-
-    def testHumanChooseDiceOutOfRange(self):
-        """Verify chooseDice() rejects values outside 1–2 and retries until a valid input is given."""
-        human = Human(name="TestHuman")
+    def test_retries_on_out_of_range(self):
+        human = _human_with_display()
         human.hasTrainStation = True
         with patch('builtins.input', side_effect=['5', '1']):
             self.assertEqual(human.chooseDice(), 1)
 
-    def testHumanChooseDiceValueError(self):
-        """Verify chooseDice() handles non-integer input gracefully and retries."""
-        human = Human(name="TestHuman")
+    def test_retries_on_non_integer(self):
+        human = _human_with_display()
         human.hasTrainStation = True
         with patch('builtins.input', side_effect=['abc', '2']):
             self.assertEqual(human.chooseDice(), 2)
 
-    def testHumanChooseTargetNoPlayers(self):
-        """Verify chooseTarget() returns None immediately when all players are rolling."""
-        human = Human(name="TestHuman")
+
+class TestHumanChooseReroll(unittest.TestCase):
+    """Human.chooseReroll delegates to display.confirm."""
+
+    def test_yes_returns_true(self):
+        human = _human_with_display()
+        human.hasRadioTower = True
+        with patch('builtins.input', return_value='y'):
+            self.assertTrue(human.chooseReroll())
+
+    def test_no_returns_false(self):
+        human = _human_with_display()
+        human.hasRadioTower = True
+        with patch('builtins.input', return_value='n'):
+            self.assertFalse(human.chooseReroll())
+
+    def test_no_radio_tower_always_false(self):
+        human = _human_with_display()
+        self.assertFalse(human.chooseReroll())
+
+
+class TestHumanChooseTarget(unittest.TestCase):
+    """Human.chooseTarget delegates to display.pick_one on valid targets."""
+
+    def test_picks_target(self):
+        human = _human_with_display()
+        bot = Bot(name="TestBot")
+        human.isrollingdice = True
+        bot.isrollingdice = False
+        with patch('builtins.input', return_value='1'):
+            result = human.chooseTarget([human, bot])
+        self.assertIs(result, bot)
+
+    def test_no_valid_targets_returns_none(self):
+        human = _human_with_display()
         human.isrollingdice = True
         self.assertIsNone(human.chooseTarget([human]))
 
-    @patch('builtins.print')
-    def testHumanChooseTargetInvalidIndex(self, mock_print):
-        """Verify chooseTarget() rejects an out-of-range index and retries."""
-        human = Human(name="TestHuman")
+    def test_retries_on_invalid_index(self):
+        human = _human_with_display()
         bot = Bot(name="TestBot")
         human.isrollingdice = True
         bot.isrollingdice = False
@@ -124,10 +92,8 @@ class TestUserInteractions(unittest.TestCase):
             result = human.chooseTarget([human, bot])
         self.assertIs(result, bot)
 
-    @patch('builtins.print')
-    def testHumanChooseTargetValueError(self, mock_print):
-        """Verify chooseTarget() handles non-integer input gracefully and retries."""
-        human = Human(name="TestHuman")
+    def test_retries_on_non_integer(self):
+        human = _human_with_display()
         bot = Bot(name="TestBot")
         human.isrollingdice = True
         bot.isrollingdice = False
@@ -136,11 +102,60 @@ class TestUserInteractions(unittest.TestCase):
         self.assertIs(result, bot)
 
 
-    @patch('builtins.print')
-    def testBusinessCenterHumanDeclines(self, mock_print):
-        """Verify Business Center does nothing when human declines the swap."""
+class TestHumanChooseAction(unittest.TestCase):
+    """Human.chooseAction presents a 3-option menu via display.pick_one."""
+
+    def test_buy(self):
+        human = _human_with_display()
+        market = Game(players=2).market
+        with patch('builtins.input', return_value='1'):
+            self.assertEqual(human.chooseAction(market), 'buy')
+
+    def test_pass(self):
+        human = _human_with_display()
+        market = Game(players=2).market
+        with patch('builtins.input', return_value='2'):
+            self.assertEqual(human.chooseAction(market), 'pass')
+
+    def test_show_cards_then_buy(self):
+        """Picking 'Show available cards' loops back; then 'Buy' returns 'buy'."""
+        human = _human_with_display()
+        market = Game(players=2).market
+        with patch('builtins.input', side_effect=['3', '1']):
+            result = human.chooseAction(market)
+        self.assertEqual(result, 'buy')
+
+
+class TestHumanChooseCard(unittest.TestCase):
+    """Human.chooseCard presents Card objects via display.pick_one."""
+
+    def test_empty_returns_none(self):
+        human = _human_with_display()
+        self.assertIsNone(human.chooseCard([]))
+
+    def test_picks_card_by_index(self):
+        human = _human_with_display()
+        ranch = Blue("Ranch", 2, 1, 1, [2])
+        wheat = Blue("Wheat Field", 1, 1, 1, [1])
+        with patch('builtins.input', return_value='1'):
+            result = human.chooseCard([ranch, wheat])
+        self.assertEqual(result, 'Ranch')
+
+    def test_picks_second_card(self):
+        human = _human_with_display()
+        ranch = Blue("Ranch", 2, 1, 1, [2])
+        wheat = Blue("Wheat Field", 1, 1, 1, [1])
+        with patch('builtins.input', return_value='2'):
+            result = human.chooseCard([ranch, wheat])
+        self.assertEqual(result, 'Wheat Field')
+
+
+class TestHumanBusinessCenterSwap(unittest.TestCase):
+    """Human.chooseBusinessCenterSwap uses display.confirm and display.pick_one."""
+
+    def test_decline_returns_none(self):
         from harmonictook import BusinessCenter
-        human = Human(name="Swapper")
+        human = _human_with_display()
         bot = Bot(name="Target")
         human.isrollingdice = True
         bot.isrollingdice = False
@@ -148,20 +163,18 @@ class TestUserInteractions(unittest.TestCase):
         bc.owner = human
         before_human = len(human.deck.deck)
         before_bot = len(bot.deck.deck)
-        with patch('builtins.input', return_value='n'):
+        # First input: pick target (bot is index 1), then decline swap
+        with patch('builtins.input', side_effect=['1', 'n']):
             bc.trigger([human, bot])
         self.assertEqual(len(human.deck.deck), before_human)
         self.assertEqual(len(bot.deck.deck), before_bot)
 
-    @patch('builtins.print')
-    def testBusinessCenterHumanSwapsCards(self, mock_print):
-        """Verify Business Center swaps one card from each player when human accepts."""
-        from harmonictook import BusinessCenter, Blue
-        human = Human(name="Swapper")
+    def test_accept_and_swap(self):
+        from harmonictook import BusinessCenter
+        human = _human_with_display()
         bot = Bot(name="Target")
         human.isrollingdice = True
         bot.isrollingdice = False
-        # Give human a Ranch (not in bot's deck) so we can verify it moved
         ranch = Blue("Ranch", 2, 1, 1, [2])
         ranch.owner = human
         human.deck.deck.append(ranch)
@@ -169,25 +182,21 @@ class TestUserInteractions(unittest.TestCase):
         bc.owner = human
         self.assertIn("Ranch", human.deck.names())
         self.assertNotIn("Ranch", bot.deck.names())
-        # inputs: swap=y, target=1, give Ranch (index 3), take Wheat Field (index 1)
-        with patch('builtins.input', side_effect=['y', '1', '3', '1']):
+        # inputs: target=1(bot), swap=y, give=Ranch(3rd card), take=Wheat Field(1st of bot's)
+        with patch('builtins.input', side_effect=['1', 'y', '3', '1']):
             bc.trigger([human, bot])
-        # Ranch should have moved from human to bot
         self.assertNotIn("Ranch", human.deck.names())
         self.assertIn("Ranch", bot.deck.names())
 
-    @patch('builtins.print')
-    def testBusinessCenterHumanNoTarget(self, mock_print):
-        """Verify Business Center handles swap gracefully when only the roller is present."""
+    def test_no_target_gives_coins(self):
         from harmonictook import BusinessCenter
-        human = Human(name="Swapper")
+        human = _human_with_display()
         human.isrollingdice = True
         bc = BusinessCenter()
         bc.owner = human
-        before = len(human.deck.deck)
-        with patch('builtins.input', return_value='y'):
-            bc.trigger([human])  # no valid targets
-        self.assertEqual(len(human.deck.deck), before)
+        bank_before = human.bank
+        bc.trigger([human])
+        self.assertEqual(human.bank, bank_before + 5)
 
 
 if __name__ == "__main__":
