@@ -4,13 +4,13 @@
 
 import unittest
 from unittest.mock import patch
-from harmonictook import Game, Human, Bot, Blue, TerminalDisplay
+from harmonictook import Game, Human, Bot, Blue, PlainTextDisplay
 
 
 def _human_with_display(name: str = "TestHuman") -> Human:
-    """Create a Human with a TerminalDisplay wired up (as Game.run() would do)."""
+    """Create a Human with a PlainTextDisplay wired up (as Game.run() would do)."""
     h = Human(name=name)
-    h.display = TerminalDisplay()
+    h.display = PlainTextDisplay()
     return h
 
 
@@ -121,7 +121,7 @@ class TestHumanChooseAction(unittest.TestCase):
         """Picking 'Show available cards' loops back; then 'Buy' returns 'buy'."""
         human = _human_with_display()
         market = Game(players=2).market
-        with patch('builtins.input', side_effect=['3', '1']):
+        with patch('builtins.input', side_effect=['3', '1']), patch('builtins.print'):
             result = human.chooseAction(market)
         self.assertEqual(result, 'buy')
 

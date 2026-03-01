@@ -345,7 +345,7 @@ class TestRecordingDisplayAndMarketState(unittest.TestCase):
             self.assertGreater(count, 0)
 
     def test_game_run_uses_null_display_by_default(self):
-        """Game.run() without a display argument completes without raising (uses TerminalDisplay).
+        """Game.run() without a display argument completes without raising (uses PlainTextDisplay).
 
         We can't suppress the terminal output easily, so we just verify the run-with-NullDisplay
         path still works correctly — the important thing is the no-arg path doesn't crash.
@@ -362,6 +362,83 @@ class TestRecordingDisplayAndMarketState(unittest.TestCase):
             setattr(p, UpgradeCard.orangeCards[name][2], True)
         game.run(display=NullDisplay())
         self.assertIs(game.winner, p)
+
+
+class TestDisplayContract(unittest.TestCase):
+    """Tests for Display ABC contract — what each concrete display must and must not do."""
+
+    def test_null_display_show_state_is_silent(self):
+        """NullDisplay.show_state() produces no output."""
+        from harmonictook import NullDisplay  # noqa: PLC0415
+        import io, sys  # noqa: E401
+        game = Game(players=2)
+        buf = io.StringIO()
+        sys.stdout = buf
+        try:
+            NullDisplay().show_state(game)
+        finally:
+            sys.stdout = sys.__stdout__
+        self.assertEqual(buf.getvalue(), "")
+
+    def test_plain_text_display_show_state_contains_player_names(self):
+        """PlainTextDisplay.show_state() prints each player's name."""
+        from harmonictook import PlainTextDisplay  # noqa: PLC0415
+        import io, sys  # noqa: E401
+        game = Game(players=2)
+        buf = io.StringIO()
+        sys.stdout = buf
+        try:
+            PlainTextDisplay().show_state(game)
+        finally:
+            sys.stdout = sys.__stdout__
+        output = buf.getvalue()
+        for player in game.players:
+            self.assertIn(player.name, output)
+
+    def test_plain_text_display_show_state_contains_market(self):
+        """PlainTextDisplay.show_state() prints the word 'Market' and at least one card name."""
+        from harmonictook import PlainTextDisplay  # noqa: PLC0415
+        import io, sys  # noqa: E401
+        game = Game(players=2)
+        buf = io.StringIO()
+        sys.stdout = buf
+        try:
+            PlainTextDisplay().show_state(game)
+        finally:
+            sys.stdout = sys.__stdout__
+        output = buf.getvalue()
+        self.assertIn("Market", output)
+        self.assertIn("Wheat Field", output)
+
+    def test_null_display_does_not_support_pick_one(self):
+        """NullDisplay.pick_one() raises NotImplementedError — it is not safe for human play."""
+        from harmonictook import NullDisplay  # noqa: PLC0415
+        with self.assertRaises(NotImplementedError):
+            NullDisplay().pick_one(["a", "b"])
+
+    def test_null_display_does_not_support_confirm(self):
+        """NullDisplay.confirm() raises NotImplementedError — it is not safe for human play."""
+        from harmonictook import NullDisplay  # noqa: PLC0415
+        with self.assertRaises(NotImplementedError):
+            NullDisplay().confirm("Continue?")
+
+    def test_null_display_does_not_support_show_info(self):
+        """NullDisplay.show_info() raises NotImplementedError — it is not safe for human play."""
+        from harmonictook import NullDisplay  # noqa: PLC0415
+        with self.assertRaises(NotImplementedError):
+            NullDisplay().show_info("hello")
+
+    def test_display_abc_requires_show_state(self):
+        """A Display subclass that omits show_state cannot be instantiated."""
+        from harmonictook import Display, Event  # noqa: PLC0415
+
+        class IncompleteDisplay(Display):
+            def show_events(self, events: list[Event]) -> None:
+                pass
+            # show_state deliberately omitted
+
+        with self.assertRaises(TypeError):
+            IncompleteDisplay()  # ABC enforcement
 
 
 if __name__ == "__main__":

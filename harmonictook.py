@@ -788,7 +788,8 @@ def deck_to_string(deckObject: Store) -> str:
 class Display(ABC):
     """Abstract base class for all game renderers.
 
-    Output: show_events renders game events.
+    Output: show_events renders game events; show_state renders a full snapshot
+            of current game state (called after each turn or on demand).
     Input:  pick_one, confirm, and show_info provide the primitives for
             Human player interaction. Any Display implementation that
             supports human play must implement all three.
@@ -797,6 +798,11 @@ class Display(ABC):
     @abstractmethod
     def show_events(self, events: list[Event]) -> None:
         """Render a list of game events."""
+        ...
+
+    @abstractmethod
+    def show_state(self, game: Game) -> None:
+        """Render a full snapshot of current game state."""
         ...
 
     def pick_one(self, options: list, prompt: str = "Your selection: ",
@@ -817,12 +823,22 @@ class Display(ABC):
         raise NotImplementedError("This display does not support human input")
 
 
-class TerminalDisplay(Display):
-    """Renders game events to the terminal via print()."""
+class PlainTextDisplay(Display):
+    """Renders game events to the terminal via print(). No dependencies beyond stdlib."""
 
     def show_events(self, events: list[Event]) -> None:
         for event in events:
             self._render(event)
+
+    def show_state(self, game: Game) -> None:
+        """Print a one-line summary per player and a market listing."""
+        for player in game.players:
+            marker = "→" if player is game.get_current_player() else " "
+            state = game.get_player_state(player)
+            print(f"{marker} {state['name']}: {state['bank']} coins, "
+                  f"{state['landmarks']}/4 landmarks, {state['cards']} cards")
+        market = game.get_market_state()
+        print("Market: " + ", ".join(f"{name}×{qty}" for name, qty in sorted(market.items())))
 
     def _render(self, event: Event) -> None:  # noqa: C901
         t = event.type
@@ -916,6 +932,9 @@ class NullDisplay(Display):
     def show_events(self, events: list[Event]) -> None:
         pass
 
+    def show_state(self, game: Game) -> None:
+        pass
+
 
 class RecordingDisplay(Display):
     """Accumulates all events from a game run for post-hoc analysis.
@@ -929,6 +948,9 @@ class RecordingDisplay(Display):
 
     def show_events(self, events: list[Event]) -> None:
         self.events.extend(events)
+
+    def show_state(self, game: Game) -> None:
+        pass
 
 
 class Game:
@@ -1092,7 +1114,7 @@ class Game:
     def run(self, display: Display | None = None) -> None:
         """Run the game loop until a player wins."""
         if display is None:
-            display = TerminalDisplay()
+            display = PlainTextDisplay()
         for p in self.players:
             p.display = display
         while True:
@@ -1123,7 +1145,7 @@ def main():
     parser.add_argument('--humans', type=int, default=0, metavar='N', help='number of human players (skips interactive setup)')
     args = parser.parse_args()
     game = Game(bots=args.bots, humans=args.humans)
-    game.run(display=TerminalDisplay())
+    game.run(display=PlainTextDisplay())
 
 
 if __name__ == "__main__":
