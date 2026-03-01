@@ -43,7 +43,7 @@ Minimum terminal size: 120×40. Layout divides player columns equally by N.
 - `tests/test_color_tui.py`: instantiation, subclass check, stub behavior, import safety
 
 ### ✅ Commit 2 — Static layout
-- `MachiKoroApp(App)` in `color_tui.py` with hardcoded placeholder text
+- `HarmonicTookApp(App)` in `color_tui.py` with hardcoded placeholder text
 - `python color_tui.py` renders the layout visually
 - No game logic; no Display protocol wiring yet
 

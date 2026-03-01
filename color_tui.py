@@ -96,8 +96,8 @@ def _player_markup(name: str, coins: int, cards: str, landmarks: str, active: bo
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
-class MachiKoroApp(App):
-    """Full-screen Machi Koro TUI. Placeholder data until Commit 3 wires game state."""
+class HarmonicTookApp(App):
+    """Full-screen Harmonic Took TUI. Placeholder data until Commit 3 wires game state."""
 
     TITLE = "Harmonic Took"
     BINDINGS = [("q", "quit", "Quit")]
@@ -153,4 +153,4 @@ class ColorTUIDisplay(Display):
 
 
 if __name__ == "__main__":
-    MachiKoroApp().run()
+    HarmonicTookApp().run()
