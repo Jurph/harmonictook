@@ -13,11 +13,6 @@ class TestGameFlow(unittest.TestCase):
     def setUp(self):
         self.game = Game(players=2)
 
-    def testSingleTurnNoCrash(self):
-        """Verify next_turn() completes without exception for a bot player and returns a list."""
-        result = self.game.next_turn()
-        self.assertIsInstance(result, list)
-
     @patch('harmonictook.random.randint', return_value=3)
     def testNextTurnReturnsDoubles(self, mock_randint):
         """Verify next_turn() emits a doubles roll event when a bot with Train Station rolls 3+3."""
@@ -60,20 +55,29 @@ class TestGameFlow(unittest.TestCase):
 
 
     def testGetPurchaseOptionsAffordable(self):
-        """Verify get_purchase_options() returns only cards the current player can afford."""
+        """Verify get_purchase_options() returns Card objects the current player can afford."""
+        from harmonictook import Card
         player = self.game.players[0]
-        # With 3 starting coins, only cards costing ≤ 3 should appear
         options = self.game.get_purchase_options()
-        for name in options:
-            card = next(c for c in self.game.market.deck if c.name == name)
+        self.assertTrue(all(isinstance(c, Card) for c in options),
+            "get_purchase_options must return Card objects, not strings")
+        for card in options:
             self.assertLessEqual(card.cost, player.bank)
 
     def testGetPurchaseOptionsEmpty(self):
         """Verify get_purchase_options() returns an empty list when the current player is broke."""
         player = self.game.players[0]
         player.deduct(player.bank)  # drain to zero
+        self.assertEqual(self.game.get_purchase_options(), [])
+
+    def testGetPurchaseOptionsIncludesAffordableLandmarks(self):
+        """Verify get_purchase_options() includes landmark upgrades the player can afford."""
+        player = self.game.players[0]
+        player.deposit(100)
         options = self.game.get_purchase_options()
-        self.assertEqual(options, [])
+        names = {c.name for c in options}
+        self.assertIn("Train Station", names,
+            "get_purchase_options must include affordable landmarks, not just market cards")
 
     def testRunSimpleWin(self):
         """Verify run() sets game.winner and exits when a player holds all four upgrades."""

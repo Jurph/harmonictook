@@ -166,20 +166,16 @@ immediately.
 
 # Current features 
 
-- Opponents now feature four personas:
-    - **Random** chooses entirely randomly, except if it has enough to buy a landmark (EASY)
-    - **Thoughtful** follows a hard-coded list of priorities (EASY/MEDIUM)
-    - **Coverage** seeks to maximize the number of possible die rolls that "hit" for it (STRONG)
-    - **EV** tries to maximize expected value, but has a limited time horizon (STRONG)
+- Opponents now feature seven personas:
+    - **Random** chooses entirely randomly, unless it has enough to buy a landmark (TRIVIAL)
+    - **Thoughtful** follows a hard-coded list of priorities (EASY)
+    - **Coverage** seeks to minimize the number of dice rolls that don't generate any income (MEDIUM)
+    - **EV** tries to maximize expected value, but has a limited time horizon (MEDIUM)
+    - **Marathon** tries to predict the turn you'll win, and paces itself to win one turn sooner (MEDIUM)
+    - **Fromage** attempts to rush the Ranch+Cheese engine (HARD) 
+    - **Impatient** attempts to find the fastest path to ending the game on its terms (HARD)
 
 # Future features
-
-- More opponents: 
-    - **Mouse** tries to combine Ranches and Cheese Factories into an engine
-    - **Dwarf** specializes in Blue, going for a Forest/Mine/Furniture engine 
-    - **Cheater** short-changes its payouts to other players and takes extra coins from the bank 
-    - **Mimic** tries to copy another player's strategy as best it can 
-    - **Riverboat** builds an engine that pays out what's needed to win 
 
 - Display
     - Create a Display() class [partial] 

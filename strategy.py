@@ -6,7 +6,7 @@
 from __future__ import annotations
 import math
 import statistics
-from harmonictook import Blue, Green, Red, Stadium, TVStation, BusinessCenter, Player, Game, Card, UpgradeCard  # noqa: F401 (UpgradeCard used in ev dispatch TODO)
+from harmonictook import Blue, Green, Red, Stadium, TVStation, BusinessCenter, Player, Game, Card, UpgradeCard
 
 # ---------------------------------------------------------------------------
 # Probability tables
@@ -372,6 +372,21 @@ def delta_ev(
 #     assuming the mean path.
 
 
+def _apply_amusement_park(base: dict[int, float]) -> dict[int, float]:
+    """Blend a PMF with its 2-turn convolution weighted by P_DOUBLES.
+
+    Models the Amusement Park bonus turn: with probability P_DOUBLES the player
+    takes a second draw from the same distribution; with 1-P_DOUBLES they keep
+    the first. Result mean = E*(1+P_D), which slightly underestimates the true
+    geometric-series value E/(1-P_D).
+    """
+    two_turns = _convolve(base, base)
+    combined: dict[int, float] = {}
+    for k in set(base) | set(two_turns):
+        combined[k] = (1.0 - P_DOUBLES) * base.get(k, 0.0) + P_DOUBLES * two_turns.get(k, 0.0)
+    return combined
+
+
 def own_turn_pmf(player: Player, players: list[Player]) -> dict[int, float]:
     """Income distribution (PMF) for player on their own turn.
 
@@ -394,15 +409,11 @@ def own_turn_pmf(player: Player, players: list[Player]) -> dict[int, float]:
         p_reroll = sum(px for x, px in base.items() if x < mu)
         base = {x: px * ((1.0 if x >= mu else 0.0) + p_reroll) for x, px in base.items()}
 
-    # Amusement Park: (1-P_D)*base + P_D*convolve(base,base) → mean = E*(1+P_D). portfolio_ev uses
-    # _turn_multiplier = 1/(1-P_D) (geometric series) → E/(1-P_D). These diverge; PMF underestimates.
-    # Verification that pmf_mean(round_pmf(...)) matches portfolio_ev(...) (TODO step 7) only holds for non-AP players.
+    # Amusement Park: (1-P_D)*base + P_D*convolve(base,base) → mean = E*(1+P_D).
+    # Note: portfolio_ev uses the geometric-series multiplier 1/(1-P_D), so
+    # pmf_mean(round_pmf(...)) only matches portfolio_ev for non-AP players.
     if getattr(player, "hasAmusementPark", False):
-        two_turns = _convolve(base, base)
-        combined: dict[int, float] = {}
-        for k in set(base) | set(two_turns):
-            combined[k] = (1.0 - P_DOUBLES) * base.get(k, 0.0) + P_DOUBLES * two_turns.get(k, 0.0)
-        base = combined
+        base = _apply_amusement_park(base)
 
     return base
 
@@ -435,11 +446,7 @@ def opponent_turn_pmf(
         income = _opponent_turn_income(observer, roller, roll)
         base[income] = base.get(income, 0.0) + prob
     if getattr(roller, "hasAmusementPark", False):
-        two_turns = _convolve(base, base)
-        combined: dict[int, float] = {}
-        for k in set(base) | set(two_turns):
-            combined[k] = (1.0 - P_DOUBLES) * base.get(k, 0.0) + P_DOUBLES * two_turns.get(k, 0.0)
-        return combined
+        return _apply_amusement_park(base)
     return base
 
 

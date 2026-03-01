@@ -4,7 +4,7 @@
 
 import unittest
 from unittest.mock import patch
-from harmonictook import Game, Human, Bot
+from harmonictook import Game, Human, Bot, Blue
 
 
 class TestUserInteractions(unittest.TestCase):
@@ -73,8 +73,10 @@ class TestUserInteractions(unittest.TestCase):
     def testHumanChooseCardPicked(self):
         """Verify Human.chooseCard() returns the value from userChoice when options are available."""
         human = Human(name="TestHuman")
+        ranch = Blue("Ranch", 2, 1, 1, [2])
+        wheat = Blue("Wheat Field", 1, 1, 1, [1])
         with patch('harmonictook.utility.userChoice', return_value='Ranch'):
-            result = human.chooseCard(['Ranch', 'Wheat Field'])
+            result = human.chooseCard([ranch, wheat])
         self.assertEqual(result, 'Ranch')
 
     @patch('builtins.print')
@@ -83,10 +85,12 @@ class TestUserInteractions(unittest.TestCase):
         from harmonictook import Game
         game = Game(players=2)
         human = Human(name="TestHuman")
-        options = ['Wheat Field', 'Ranch']
+        ranch = Blue("Ranch", 2, 1, 1, [2])
+        wheat = Blue("Wheat Field", 1, 1, 1, [1])
+        options = [ranch, wheat]
         with patch('harmonictook.utility.card_menu', return_value='Ranch') as mock_menu:
             result = human.chooseCard(options, game)
-        mock_menu.assert_called_once()
+        mock_menu.assert_called_once_with(options)
         self.assertEqual(result, 'Ranch')
 
     def testHumanChooseDiceOutOfRange(self):

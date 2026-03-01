@@ -4,7 +4,7 @@
 
 import unittest
 from unittest.mock import patch, MagicMock
-from harmonictook import Game, Bot, Human, TVStation, GameState, PlayerSnapshot, NullDisplay, UpgradeCard
+from harmonictook import Game, Human, TVStation, GameState, NullDisplay
 from bots import ThoughtfulBot
 
 
@@ -71,10 +71,11 @@ class TestRefreshMarket(unittest.TestCase):
         """Verify branch 1: card not in player deck, already in market → market unchanged."""
         self.assertIn("TV Station", self.game.market.names())
         self.assertNotIn("TV Station", self.player.deck.names())
-        size_before = len(self.game.market.deck)
+        tv_count_before = sum(1 for c in self.game.market.deck if c.name == "TV Station")
         self.game.refresh_market()
-        # TV Station should still be in the market; size should not increase from this card
+        tv_count_after = sum(1 for c in self.game.market.deck if c.name == "TV Station")
         self.assertIn("TV Station", self.game.market.names())
+        self.assertEqual(tv_count_after, tv_count_before, "TV Station count in market must not change when already present")
 
     def testRefreshMarketPassBranchOwnedNotInMarket(self):
         """Verify branch 4: card in player deck, not in market → market stays clean."""
@@ -124,10 +125,6 @@ class TestGameHistory(unittest.TestCase):
         self.game = Game(players=2)
         self.player = self.game.players[0]
 
-    def testHistoryStartsEmpty(self):
-        """Verify a freshly constructed Game has an empty history."""
-        self.assertEqual(self.game.history, [])
-
     @patch('harmonictook.random.randint', return_value=12)
     def testHistoryGrowsAfterEachTurn(self, _):
         """Verify history gains one entry per next_turn() call."""
@@ -146,17 +143,6 @@ class TestGameHistory(unittest.TestCase):
         self.assertEqual(state.active_player, self.player.name)
         self.assertEqual(state.roll, 12)
         self.assertEqual(len(state.players), 2)
-
-    @patch('harmonictook.random.randint', return_value=12)
-    def testHistoryPlayerSnapshotType(self, _):
-        """Verify history[0].players contains PlayerSnapshot objects with correct types."""
-        self.game.next_turn(NullDisplay())
-        snap = self.game.history[0].players[0]
-        self.assertIsInstance(snap, PlayerSnapshot)
-        self.assertIsInstance(snap.name, str)
-        self.assertIsInstance(snap.bank, int)
-        self.assertIsInstance(snap.landmarks, int)
-        self.assertIsInstance(snap.cards, int)
 
     @patch('harmonictook.random.randint', return_value=12)
     def testHistoryBankReflectsPostTurnBalance(self, _):

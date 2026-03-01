@@ -1,14 +1,16 @@
 #!/usr/bin/python3
 # -*- coding: UTF-8 -*-
-# tournament.py — Headless evaluation harness for bot strategies
+# tournament.py — Swiss tournament harness for bot strategy evaluation
 #
-# Runs a Bot Under Evaluation (BUE) against Bot sparring partners across
-# 2-, 3-, and 4-player brackets and reports win rates.
+# Runs a 24-player Swiss tournament (3 of each of 8 bot families) rated with
+# Glicko-1.  Each day runs four rounds: random pairs, seeded pairs, seeded
+# triples, striped quads.  Per-game records can be exported to JSONL.
 #
 # Usage:
-#   python tournament.py                        # ThoughtfulBot vs Bots, 5 games each
-#   python tournament.py --games 20             # 20 games per bracket
-#   python tournament.py --bue thoughtful       # explicit BUE selection (future)
+#   python tournament.py                     # 1-day Swiss, default 24-player field
+#   python tournament.py --days 20           # 20 days of Swiss
+#   python tournament.py --records out.jsonl # also export per-game JSONL records
+#   python tournament.py --stats out.txt     # also export per-game stats summary
 
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Callable
 
-from harmonictook import Bot, Game, NullDisplay, Player, PlayerDeck, RecordingDisplay, UpgradeCard
+from harmonictook import Bot, Game, Player, PlayerDeck, RecordingDisplay, UpgradeCard
 from bots import EVBot, FromageBot, ImpatientBot, KinematicBot, MarathonBot, ThoughtfulBot, CoverageBot  # noqa: F401 (re-exported for callers)
 from strategy import pmf_mean, round_pmf, tuv_expected
 
@@ -95,42 +97,11 @@ def finish_score(player: Player, game: Game) -> int:
     return int(round(50.0 - eruv))
 
 
-def run_match(bue_factory: Callable[[str], Player], n_players: int) -> bool:
-    """Run one headless game: BUE at index 0 vs (n_players-1) Bot sparring partners.
-
-    Returns True if the BUE wins.
-    BUE is always placed at index 0 (first-mover bias noted; acceptable for v1).
-    """
-    game = Game(players=n_players)
-    bue = bue_factory(name="BUE")
-    bue.deck = PlayerDeck(bue)
-    game.players[0] = bue
-    game.run(display=NullDisplay())
-    return game.winner is bue
-
-
-def run_bracket(
-    bue_factory: Callable[[str], Player],
-    n_players: int,
-    n_games: int = 5,
-) -> tuple[int, int]:
-    """Run n_games matches at n_players table size.
-
-    Returns (wins, losses).
-    """
-    wins = sum(1 for _ in range(n_games) if run_match(bue_factory, n_players))
-    return wins, n_games - wins
-
-
-def run_tournament(
-    bue_factory: Callable[[str], Player],
-    n_games: int = 5,
-) -> dict[int, tuple[int, int]]:
-    """Run full tournament across 2-, 3-, and 4-player brackets.
-
-    Returns {n_players: (wins, losses)} for each bracket.
-    """
-    return {n: run_bracket(bue_factory, n, n_games) for n in (2, 3, 4)}
+def make_evbot(n_horizon: int) -> Callable[[str], EVBot]:
+    """Return a factory that creates an EVBot with the given planning horizon."""
+    def factory(name: str) -> EVBot:
+        return EVBot(name=name, n_horizon=n_horizon)
+    return factory
 
 
 def make_kinematic_bot(a: float, eruv_offset: int) -> Callable[[str], KinematicBot]:
@@ -139,68 +110,6 @@ def make_kinematic_bot(a: float, eruv_offset: int) -> Callable[[str], KinematicB
         return KinematicBot(name=name, a=a, eruv_offset=eruv_offset)
     factory.__name__ = f"KinematicBot(a={a},o={eruv_offset:+d})"
     return factory
-
-
-def make_evbot(n_horizon: int) -> Callable[[str], EVBot]:
-    """Return a factory that creates an EVBot with the given planning horizon."""
-    def factory(name: str) -> EVBot:
-        return EVBot(name=name, n_horizon=n_horizon)
-    return factory
-
-
-def run_round_robin(
-    named_factories: list[tuple[str, Callable[[str], Player]]],
-    n_games: int = 100,
-) -> dict[str, int]:
-    """Run n_games with one bot per factory at the same table, randomizing seats each game.
-
-    Returns {label: win_count} for each named factory.
-    Seats are shuffled each game to remove first-mover positional bias.
-    """
-    wins = {label: 0 for label, _ in named_factories}
-    for _ in range(n_games):
-        entries = [(label, factory(name=label)) for label, factory in named_factories]
-        random.shuffle(entries)
-        n = len(entries)
-        game = Game(players=n)
-        player_to_label: dict[int, str] = {}
-        for i, (label, player) in enumerate(entries):
-            player.deck = PlayerDeck(player)
-            game.players[i] = player
-            player_to_label[id(player)] = label
-        game.run(display=NullDisplay())
-        if game.winner is not None:
-            label = player_to_label.get(id(game.winner))
-            if label is not None:
-                wins[label] += 1
-    return wins
-
-
-def print_round_robin_report(results: dict[str, int], n_games: int) -> None:
-    """Print round-robin results sorted by win count descending."""
-    n_bots = len(results)
-    expected_pct = 100.0 / n_bots if n_bots else 0.0
-    print(f"\n=== N-Horizon Shootout: {n_bots}-player table, {n_games} games ===")
-    print(f"  (Randomized seating; expected ~{expected_pct:.1f}% per bot if equally matched)\n")
-    for label, bot_wins in sorted(results.items(), key=lambda x: -x[1]):
-        pct = 100.0 * bot_wins / n_games if n_games else 0.0
-        print(f"  {label:20s}  {bot_wins:3d} wins  ({pct:.1f}%)")
-    print()
-
-
-def print_report(bue_name: str, results: dict[int, tuple[int, int]]) -> None:
-    """Print a human-readable tournament summary."""
-    print(f"\n=== Tournament Results: {bue_name} ===")
-    total_wins = total_games = 0
-    for n_players, (wins, losses) in sorted(results.items()):
-        games = wins + losses
-        pct = 100.0 * wins / games if games else 0.0
-        print(f"  {n_players}-player:  {wins}W / {losses}L  ({pct:.1f}%)")
-        total_wins += wins
-        total_games += games
-    total_pct = 100.0 * total_wins / total_games if total_games else 0.0
-    print("  -----------------------------")
-    print(f"  Overall:   {total_wins}W / {total_games - total_wins}L  ({total_pct:.1f}%)\n")
 
 
 def _write_game_record(
@@ -220,8 +129,6 @@ def _write_game_record(
       income_ev     — mean coins per round at game end (for acceleration analysis)
       card_payouts  — {card_name: {fires, total}} aggregated from game events
     """
-    # Aggregate card payouts from event stream: payout (Blue/Green/factory),
-    # steal (Red/TVStation), collect (Stadium) — all now carry card=self.name.
     payout_types = {"payout", "steal", "collect"}
     by_player: dict[str, dict[str, dict[str, int]]] = {lbl: {} for lbl in instances}
     for ev in all_events:
@@ -378,16 +285,16 @@ def run_swiss_tournament(
     stats_path: str | None = None,
     records_path: str | None = None,
 ) -> list[TournamentPlayer]:
-    """Run n_days x 4-round Swiss tournament; return players sorted by final Elo.
+    """Run n_days x 4-round Swiss tournament; return players sorted by final rating.
 
     Each day's rounds:
       1 — Random pairs (day 1) or seeded pairs (subsequent days)
       2 — Seeded pairs (avoid same-day round-1 rematches where possible)
       3 — Seeded triples
-      4 — Seeded quads
+      4 — Striped quads (ranks 1,4,7,10 / 2,5,8,11 / 3,6,9,12)
 
-    Field is padded to a multiple of 12 with Bot fillers if needed.
-    All Elo and scores state is mutated in place on each TournamentPlayer.
+    Field is padded to a multiple of 12 with random-bot fillers if needed.
+    Rating and score state is mutated in place on each TournamentPlayer.
     """
     filler_n = 0
     while len(entries) % 12 != 0:
@@ -472,7 +379,7 @@ def _default_swiss_field() -> list[TournamentPlayer]:
       EV(N=3)     — Edgar, Ellen, Evan
       Coverage    — Chadd, Carli, Casey
       Fromage     — Felicity, Franklin, Fiona
-      Kinematic   — Kim, Kourtney, Khloe  (a=0.45, offset=1: best sweep result)
+      Kinematic   — Kim, Kourtney, Khloe  (a=0.45, offset=1)
 
     24 players divides evenly into pairs (12), triples (8), and quads (6),
     satisfying the Swiss tournament mod-12 requirement.
@@ -508,34 +415,17 @@ def _default_swiss_field() -> list[TournamentPlayer]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Headless bot tournament")
-    parser.add_argument("--games", type=int, default=5, metavar="N",
-                        help="games per bracket / round-robin (default: 5; recommend 100+ for round-robin)")
-    parser.add_argument("--round-robin", action="store_true",
-                        help="run N-horizon shootout instead of BUE vs Bot sparring")
-    parser.add_argument("--swiss", action="store_true",
-                        help="run Swiss tournament with 24 named bots (3 of each of 8 families)")
+    parser = argparse.ArgumentParser(description="Swiss bot tournament")
     parser.add_argument("--days", type=int, default=1, metavar="N",
                         help="number of 4-round days in the Swiss tournament (default: 1)")
-    parser.add_argument("--horizons", type=int, nargs="+", default=[1, 3, 5, 7],
-                        metavar="N", help="EV horizons to compare in round-robin (default: 1 3 5 7)")
     parser.add_argument("--stats", metavar="FILE", default=None,
                         help="append per-game stats (turns, n, scores) to FILE")
     parser.add_argument("--records", metavar="FILE", default=None,
                         help="append per-game JSONL records (decks, ERUV, bot type) to FILE")
     args = parser.parse_args()
 
-    if args.swiss:
-        entries = _default_swiss_field()
-        run_swiss_tournament(entries, n_days=args.days, stats_path=args.stats, records_path=args.records)
-    elif args.round_robin:
-        named_factories = [(f"EVBot(N={n})", make_evbot(n)) for n in args.horizons]
-        results = run_round_robin(named_factories, n_games=args.games)
-        print_round_robin_report(results, n_games=args.games)
-    else:
-        bue_factory = EVBot
-        results = run_tournament(bue_factory, n_games=args.games)
-        print_report(EVBot.__name__, results)
+    entries = _default_swiss_field()
+    run_swiss_tournament(entries, n_days=args.days, stats_path=args.stats, records_path=args.records)
 
 
 if __name__ == "__main__":

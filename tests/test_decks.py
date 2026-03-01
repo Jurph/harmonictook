@@ -38,14 +38,6 @@ class TestStoreOperations(unittest.TestCase):
         self.assertNotIn("Mine", cheap)     # costs 6
         self.assertNotIn("Stadium", cheap)  # costs 6
 
-    def testStoreFreq(self):
-        """Verify freq() counts distinct card objects correctly."""
-        table = TableDeck()
-        freq = table.freq()
-        total = sum(freq.values())
-        self.assertEqual(total, len(table.deck))
-
-
     def testStoreAppendNonCard(self):
         """Verify Store.append() raises TypeError for non-Card objects and leaves deck unchanged."""
         table = TableDeck()

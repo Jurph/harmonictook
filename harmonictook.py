@@ -104,7 +104,7 @@ class Player(object):
         """Choose a turn action; subclasses must implement this method."""
         raise NotImplementedError
 
-    def chooseCard(self, options: list, game: Game | None = None) -> str | None:
+    def chooseCard(self, options: list[Card], game: Game | None = None) -> str | None:
         """Choose a card to buy; subclasses must implement this method."""
         raise NotImplementedError
 
@@ -135,7 +135,7 @@ class Player(object):
         else:
             deducted = self.bank
         self.bank -= deducted
-        return deducted         # ...and returns the amount that was deducted, for payment purposes
+        return deducted
 
     def buy(self, name: str, availableCards: Store) -> list[Event]:
         """Purchase the named card from availableCards (or upgrades list) if affordable."""
@@ -208,16 +208,17 @@ class Human(Player):
             else:
                 print("Please enter B, P, or S.")
 
-    def chooseCard(self, options: list, game: Game | None = None) -> str | None:
-        """Prompt the human to pick a card; shows a rich table when game is supplied."""
+    def chooseCard(self, options: list[Card], game: Game | None = None) -> str | None:
+        """Prompt the human to pick a card from a list of Card objects.
+
+        Displays a rich table when game is supplied; plain numbered list otherwise.
+        """
         if not options:
             print("Oh no - no valid purchase options this turn.")
             return None
-        names = [o.name if isinstance(o, Card) else o for o in options]
         if game is not None:
-            cards = [next(c for c in game.market.deck if c.name == name) for name in names]
-            return utility.card_menu(cards)
-        return utility.userChoice(names)
+            return utility.card_menu(options)
+        return utility.userChoice([c.name for c in options])
 
     def chooseDice(self, players: list | None = None) -> int:
         """Prompt the human (if they own Train Station) to choose 1 or 2 dice; default is 1."""
@@ -265,22 +266,15 @@ class Bot(Player):
 
     def chooseAction(self, availableCards: Store) -> str:
         """Return 'buy' if any affordable card is available, otherwise 'pass'."""
-        # Bots always try to buy if they have enough money
-        options = availableCards.names(maxcost=self.bank)
-        if len(options) > 0:
+        if availableCards.names(maxcost=self.bank):
             return 'buy'
         return 'pass'
 
-    def chooseCard(self, options: list, game: Game | None = None) -> str | None:
-        """Return a randomly selected card name from options, or None if the list is empty."""
+    def chooseCard(self, options: list[Card], game: Game | None = None) -> str | None:
+        """Return a randomly selected card name, or None if the list is empty."""
         if not options:
             return None
-        names = [o.name if isinstance(o, Card) else o for o in options]
-        return random.choice(names)
-
-    def chooseDice(self, players: list | None = None) -> int:
-        """Return 2 if the bot owns Train Station, otherwise 1."""
-        return 2 if self.hasTrainStation else 1
+        return random.choice(options).name
 
     def chooseReroll(self, last_roll: int | None = None) -> bool:
         """Return True if the bot owns Radio Tower and the last roll was below 5."""
@@ -324,18 +318,15 @@ def get_die_roller(players: list[Player]) -> Player:
 
 
 # === Define Class Card() === #
-# Cards must have a name, cost, a payer, a payout amount, and one or more die rolls on which they "hit"
 @total_ordering
 class Card(object):
-    """Abstract base card; subclasses define payer/recipient logic and trigger behaviour."""
+    """Abstract base card; subclasses implement trigger() to define activation behaviour."""
 
     def __init__(self):
-        self.name = None        # Name should be a string like "Wheat Field"
-        self.payer = None       # Payer can be 0 (bank), 1 (die roller), 2 (each other player), 3 (owner), or 4 (specific player)
-        self.recipient = None   # Recipient can be 1 (die roller), 2 (each other player), or 3 (owner)
-        self.cost = 0           # Cost should be a non-zero integer
-        self.payout = 0         # Payout can be any integer
-        self.hitsOn = [0]       # "Hits" can be one or more integers achievable on 2d6
+        self.name = None
+        self.cost = 0
+        self.payout = 0
+        self.hitsOn = [0]
         self.owner = None       # Cards start with no owner
         self.category = None    # Categories from the list below
         self.multiplies = None  # Also categories
@@ -385,8 +376,6 @@ class Green(Card):
         self.payout = payout
         self.multiplies = multiplies
         self.hitsOn = hitsOn
-        self.payer = 0         # Green cards always pay out from the bank (0)
-        self.recipient = 1     # Green cards always pay to the die roller (1)
 
     _category_names = {1: "Grain", 2: "Ranch", 3: "Bakery", 4: "Café",
                        5: "Gear", 6: "Factory", 7: "Major", 8: "Fruit"}
@@ -432,8 +421,6 @@ class Red(Card):
         self.cost = cost
         self.payout = payout
         self.hitsOn = hitsOn
-        self.payer = 1          # Red cards pay out from the die-roller (1)
-        self.recipient = 3      # Red cards pay to the card owner (3)
 
     def describe(self) -> str:
         """Describe this Red card's steal effect; notes Shopping Mall bonus where applicable."""
@@ -461,8 +448,6 @@ class Blue(Card):
         self.cost = cost
         self.payout = payout
         self.hitsOn = hitsOn
-        self.payer = 0          # Blue cards pay out fromm the bank (0)
-        self.recipient = 3      # Blue cards pay out to the card owner (3)
 
     def describe(self) -> str:
         """Describe this Blue card's passive income effect."""
@@ -508,9 +493,7 @@ class TVStation(Card):
         self.name = name
         self.category = 7
         self.cost = 7
-        self.recipient = 1      # Purple cards pay out to the die-roller (1)
-        self.hitsOn = [6]       # Purple cards all hit on [6]
-        self.payer = 4          # TV Station collects from one player
+        self.hitsOn = [6]
         self.payout = 5
 
     def describe(self) -> str:
@@ -542,10 +525,8 @@ class BusinessCenter(Card):
         self.name = name
         self.category = 7
         self.cost = 8
-        self.recipient = 3      # Purple cards pay out to the die-roller (1)
-        self.hitsOn = [6]       # Purple cards all hit on [6]
-        self.payer = 4          # Business Center collects from one targeted player (4)
-        self.payout = 0         # Payout is the ability to swap cards (!)
+        self.hitsOn = [6]
+        self.payout = 0
 
     def describe(self) -> str:
         """Describe the Business Center's card-swap effect."""
@@ -941,9 +922,24 @@ class Game:
         """Return the player whose turn it currently is."""
         return self.players[self.current_player_index]
 
-    def get_purchase_options(self) -> list[str]:
-        """Return card names in the market affordable by the current player."""
-        return self.market.names(maxcost=self.get_current_player().bank)
+    def get_purchase_options(self) -> list[Card]:
+        """Return Card objects affordable by the current player.
+
+        Includes both market establishments and any landmark upgrades the player
+        can afford but has not yet built. Distinct by name — duplicates pruned.
+        """
+        player = self.get_current_player()
+        seen: set[str] = set()
+        options: list[Card] = []
+        for card in self.market.deck:
+            if card.cost <= player.bank and card.name not in seen:
+                seen.add(card.name)
+                options.append(card)
+        for upgrade in player.checkRemainingUpgrades():
+            if upgrade.cost <= player.bank and upgrade.name not in seen:
+                seen.add(upgrade.name)
+                options.append(upgrade)
+        return options
 
     def get_player_state(self, player: Player) -> dict:
         """Return a display-friendly dict for one player: name, bank, landmarks count, cards count."""
@@ -1061,12 +1057,16 @@ class Game:
         self.turn_number += 1
         return events
 
+    def _declare_winner(self, player: Player, display: Display) -> None:
+        """Record the winner and emit the win event."""
+        self.winner = player
+        display.show_events([Event(type="win", player=player.name)])
+
     def run(self, display: Display | None = None) -> None:
         """Run the game loop until a player wins."""
         if display is None:
             display = TerminalDisplay()
-        no_winner_yet = True
-        while no_winner_yet:
+        while True:
             for i, turntaker in enumerate(self.players):
                 self.current_player_index = i
                 # next_turn emits to display in real-time; we only inspect events for doubles
@@ -1074,9 +1074,7 @@ class Game:
                 roll_events = [e for e in events if e.type == "roll"]
                 is_doubles = roll_events[-1].is_doubles if roll_events else False
                 if turntaker.isWinner():
-                    no_winner_yet = False
-                    self.winner = turntaker
-                    display.show_events([Event(type="win", player=turntaker.name)])
+                    self._declare_winner(turntaker, display)
                     return
                 while is_doubles and turntaker.hasAmusementPark:
                     display.show_events([Event(type="doubles_bonus", player=turntaker.name)])
@@ -1084,9 +1082,7 @@ class Game:
                     roll_events = [e for e in events if e.type == "roll"]
                     is_doubles = roll_events[-1].is_doubles if roll_events else False
                     if turntaker.isWinner():
-                        no_winner_yet = False
-                        self.winner = turntaker
-                        display.show_events([Event(type="win", player=turntaker.name)])
+                        self._declare_winner(turntaker, display)
                         return
 
 

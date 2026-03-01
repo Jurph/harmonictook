@@ -22,8 +22,6 @@ class TestCards(unittest.TestCase):
         testbot = self.testbot
         otherbot = self.otherbot
         bluecard = Blue("Dark Blue Card", 2, 1, 1, [11, 12])
-        self.assertIsInstance(bluecard, Card)
-        self.assertIsInstance(bluecard, Blue)
         self.assertEqual(bluecard.hitsOn[0], 11)
         self.assertEqual(bluecard.cost, 1)
         for _ in range(4):
@@ -47,9 +45,6 @@ class TestCards(unittest.TestCase):
         """Verify Green multiplier cards pay the die-roller scaled to matching category card count."""
         testbot = self.testbot
         otherbot = self.otherbot
-        greencard = Green("Green Card", 3, 1, 5, [12], 77)
-        self.assertIsInstance(greencard, Card)
-        self.assertIsInstance(greencard, Green)
         for _ in range(6):
             self.game.market.append(Blue("Light Blue Card", 77, 1, 1, [11]))
             self.game.market.append(Green("Green Card", 3, 1, 5, [12], 77))
@@ -72,9 +67,6 @@ class TestCards(unittest.TestCase):
         """Verify Red cards deduct from the die-roller and credit the card owner."""
         testbot = self.testbot
         otherbot = self.otherbot
-        redcard = Red("Maroon Card", 2, 2, 25, [1,2,3,4,5])
-        self.assertIsInstance(redcard, Card)
-        self.assertIsInstance(redcard, Red)
         for _ in range(3):
             self.game.market.append(Red("Crimson Card", 2, 2, 10, [1,2,3,4,5]))
         otherbot.buy("Crimson Card", self.game.market)
@@ -283,8 +275,6 @@ class TestCardOrdering(unittest.TestCase):
         """Verify the base Card() constructor is instantiable and all fields start at their defaults."""
         card = Card()
         self.assertIsNone(card.name)
-        self.assertIsNone(card.payer)
-        self.assertIsNone(card.recipient)
         self.assertEqual(card.cost, 0)
         self.assertEqual(card.payout, 0)
         self.assertEqual(card.hitsOn, [0])

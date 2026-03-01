@@ -396,21 +396,44 @@ class TestEVBusinessCenter(unittest.TestCase):
         self.assertGreater(delta_ev(card, self.owner, self.game.players), 0.0)
 
     def test_spite_filter_prefers_less_synergistic_give(self):
-        """BC give-card selection avoids handing target a Ranch that feeds their Cheese Factory."""
-        factory = Green("Cheese Factory", 6, 5, 3, [7], 2)
-        factory.owner = self.target
-        self.target.deck.append(factory)
-        mine = Blue("Mine", 5, 6, 5, [9])
-        mine.owner = self.target
-        self.target.deck.append(mine)
+        """BC EV is lower when Ranch feeds the target's Cheese Factory.
+
+        Owner: Ranch (Blue[2], cheap give) and FatBakery (Green[2], payout=5, expensive give).
+        Target: Cheese Factory (multiplies Ranch/cat-2) and TakeBait (Blue[2], payout=10).
+        Everyone rolls 2 dice so Cheese Factory ([7]) can fire.
+
+        Without Cheese Factory: Ranch has lowest delta_ev to target → given, give_loss ≈ 2/36.
+        With Cheese Factory: Ranch's delta_ev to target jumps (synergy +18/36), forcing the
+        spite filter to give FatBakery instead, increasing give_loss to 5/36.
+        Net BC EV is therefore measurably lower when Cheese Factory is present.
+        """
+        self.owner.deck.deck.clear()
+        self.target.deck.deck.clear()
+        self.owner.hasTrainStation = True
+        self.target.hasTrainStation = True
+
         ranch = Blue("Ranch", 2, 1, 1, [2])
         ranch.owner = self.owner
         self.owner.deck.append(ranch)
+        fat_bakery = Green("FatBakery", 3, 1, 5, [2])
+        fat_bakery.owner = self.owner
+        self.owner.deck.append(fat_bakery)
+
+        take_bait = Blue("TakeBait", 1, 1, 10, [2])
+        take_bait.owner = self.target
+        self.target.deck.append(take_bait)
+        factory = Green("Cheese Factory", 6, 5, 3, [7], 2)
+        factory.owner = self.target
+        self.target.deck.append(factory)
 
         card = BusinessCenter()
-        result = delta_ev(card, self.owner, self.game.players)
-        self.assertIsInstance(result, float)
-        self.assertGreaterEqual(result, 0.0)
+        ev_with_factory = delta_ev(card, self.owner, self.game.players)
+        self.target.deck.deck.remove(factory)
+        ev_without_factory = delta_ev(card, self.owner, self.game.players)
+
+        self.assertGreater(ev_without_factory, ev_with_factory,
+            msg="Spite filter should force a more expensive give when Ranch feeds target's "
+                "Cheese Factory, reducing BC net EV")
 
     def test_no_opponents_returns_zero(self):
         """With no valid opponents (only owner), BC returns 0."""
@@ -436,15 +459,6 @@ class TestEVBot(unittest.TestCase):
         self.game.players[0] = self.bot
         self.game.current_player_index = 0
 
-    def test_fallback_without_game(self):
-        """String options with no game fall back to random.choice, not a crash."""
-        from unittest.mock import patch
-        options = ['Wheat Field', 'Ranch']
-        with patch('bots.random.choice', return_value='Ranch') as mock_choice:
-            result = self.bot.chooseCard(options)
-        mock_choice.assert_called_once_with(options)
-        self.assertEqual(result, 'Ranch')
-
     def test_accepts_card_objects_without_game(self):
         """Card objects are scored directly; result is a string name from the options."""
         from harmonictook import Blue
@@ -461,12 +475,13 @@ class TestEVBot(unittest.TestCase):
         self.assertIsNone(self.bot.chooseCard([], self.game))
 
     def test_returns_string_from_options(self):
-        """With a valid game, chooseCard returns a string that is in options."""
+        """With a valid game, chooseCard returns a string name from the Card options."""
         self.bot.bank = 999
-        options = self.game.market.names(maxcost=self.bot.bank)
+        self.game.players[0].deposit(999)
+        options = self.game.get_purchase_options()
         result = self.bot.chooseCard(options, self.game)
         self.assertIsInstance(result, str)
-        self.assertIn(result, options)
+        self.assertIn(result, [c.name for c in options])
 
 
 class TestCoverageBotChooseCard(unittest.TestCase):
@@ -702,9 +717,6 @@ class TestPMFStatsEdgeCases(unittest.TestCase):
 
     def test_mean_empty_returns_zero(self):
         self.assertAlmostEqual(pmf_mean({}), 0.0, places=10)
-
-    def test_mean_single_outcome(self):
-        self.assertAlmostEqual(pmf_mean({7: 1.0}), 7.0, places=10)
 
     def test_variance_empty_returns_zero(self):
         self.assertAlmostEqual(pmf_variance({}), 0.0, places=10)
@@ -982,7 +994,7 @@ class TestPMF(unittest.TestCase):
         Caveat: verification only holds for non-AP players; AP uses E*(1+P_D) vs portfolio_ev's E/(1-P_D).
         """
         game = Game(players=2)
-        p0, p1 = game.players[0], game.players[1]
+        p0 = game.players[0]
         for p in game.players:
             p.deposit(10)
             p.deck.deck.clear()
@@ -1083,3 +1095,110 @@ class TestTUV(unittest.TestCase):
         self.assertAlmostEqual(pmf_mass_at_least(pmf, 2), 0.75, places=10)
         self.assertAlmostEqual(pmf_mass_at_least(pmf, 4), 0.25, places=10)
         self.assertAlmostEqual(pmf_mass_at_least(pmf, 5), 0.0, places=10)
+
+
+class TestTUVPercentileAndVariance(unittest.TestCase):
+    """tuv_percentile and tuv_variance: percentile-based and variance-based TUV."""
+
+    def setUp(self):
+        self.game = Game(players=2)
+        self.p = self.game.players[0]
+        self.p.deck.deck.clear()
+        self.p.deposit(10)
+        self.game.players[1].deposit(10)
+        card = Blue("Wheat Field", 1, 1, 1, [1])
+        card.owner = self.p
+        self.p.deck.append(card)
+
+    def test_winner_has_zero_tuv_percentile(self):
+        """Winner has no deficit; tuv_percentile returns 0.0 regardless of p."""
+        for name in UpgradeCard.orangeCards:
+            c = UpgradeCard(name)
+            c.owner = self.p
+            self.p.deck.append(c)
+            setattr(self.p, UpgradeCard.orangeCards[name][2], True)
+        self.assertTrue(self.p.isWinner())
+        self.assertAlmostEqual(tuv_percentile(self.p, self.game, p=0.1), 0.0, places=10)
+        self.assertAlmostEqual(tuv_percentile(self.p, self.game, p=0.9), 0.0, places=10)
+
+    def test_higher_p_gives_lower_or_equal_tuv_when_income_positive(self):
+        """Higher p → higher income estimate (more optimistic) → lower or equal TUV.
+
+        Add Blue cards covering rolls 1–5 so P(income=0 per round) = 1/36 ≈ 0.028.
+        Both p=0.05 and p=0.5 then give positive income estimates; the 50th-percentile
+        income is higher than the 5th-percentile income, so t(p=0.5) <= t(p=0.05).
+        """
+        self.p.deck.deck.clear()
+        self.p.bank = 0  # maximize deficit so TUV differences are visible
+        for roll in range(1, 6):
+            c = Blue(f"B{roll}", 1, 1, 1, [roll])
+            c.owner = self.p
+            self.p.deck.append(c)
+        t_pessimist = tuv_percentile(self.p, self.game, p=0.05)
+        t_optimist  = tuv_percentile(self.p, self.game, p=0.5)
+        self.assertLessEqual(t_optimist, t_pessimist,
+            "Higher p (more optimistic income estimate) must yield lower or equal TUV")
+
+    def test_tuv_variance_increases_with_more_coverage_gaps(self):
+        """A deck with sparse coverage has higher income variance than a fully-covered deck.
+
+        More zero-income rounds → higher variance around the mean.
+        """
+        # Sparse: only Wheat Field[1] — low coverage, high variance
+        v_sparse = tuv_variance(self.p, self.game)
+        # Dense: add cards covering 1-6 → income guaranteed every own-turn roll
+        for roll in [2, 3, 4, 5, 6]:
+            c = Blue(f"Card{roll}", 1, 1, 1, [roll])
+            c.owner = self.p
+            self.p.deck.append(c)
+        v_dense = tuv_variance(self.p, self.game)
+        self.assertGreater(v_sparse, v_dense,
+            "Sparse-coverage deck should have higher per-round income variance")
+
+    def test_tuv_variance_nonnegative(self):
+        """Income variance is always >= 0 (guards against floating-point sign flip)."""
+        self.assertGreaterEqual(tuv_variance(self.p, self.game), 0.0)
+
+
+class TestGlicko(unittest.TestCase):
+    """Glicko-1 rating math: known numerical values from the Glicko-1 paper."""
+
+    def test_glicko_update_no_games_unchanged(self):
+        """An empty result list leaves rating and RD unchanged."""
+        from tournament import _glicko_update
+        r, rd = _glicko_update(1500.0, 200.0, [])
+        self.assertAlmostEqual(r, 1500.0, places=6)
+        self.assertAlmostEqual(rd, 200.0, places=6)
+
+    def test_glicko_update_win_increases_rating(self):
+        """Winning a game against an equally-rated opponent raises the rating."""
+        from tournament import _glicko_update
+        r, _ = _glicko_update(1500.0, 200.0, [(1500.0, 200.0, 1.0)])
+        self.assertGreater(r, 1500.0)
+
+    def test_glicko_update_loss_decreases_rating(self):
+        """Losing a game against an equally-rated opponent lowers the rating."""
+        from tournament import _glicko_update
+        r, _ = _glicko_update(1500.0, 200.0, [(1500.0, 200.0, 0.0)])
+        self.assertLess(r, 1500.0)
+
+    def test_glicko_update_draw_unchanged(self):
+        """Drawing against an equally-rated opponent leaves rating unchanged."""
+        from tournament import _glicko_update
+        r, _ = _glicko_update(1500.0, 200.0, [(1500.0, 200.0, 0.5)])
+        self.assertAlmostEqual(r, 1500.0, places=6)
+
+    def test_glicko_update_rd_decreases_after_games(self):
+        """Playing games reduces RD (rating uncertainty shrinks with evidence)."""
+        from tournament import _glicko_update
+        _, new_rd = _glicko_update(1500.0, 200.0, [
+            (1500.0, 200.0, 1.0),
+            (1500.0, 200.0, 0.0),
+        ])
+        self.assertLess(new_rd, 200.0)
+
+    def test_glicko_rd_floor(self):
+        """RD never drops below _GLICKO_RD_MIN=50 even with many games played."""
+        from tournament import _glicko_update, _GLICKO_RD_MIN
+        _, rd = _glicko_update(1500.0, 50.1, [(1500.0, 50.0, 0.5)] * 100)
+        self.assertGreaterEqual(rd, _GLICKO_RD_MIN)

@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 import random
 
-from harmonictook import Blue, Bot, Card, Game, Green, UpgradeCard
+from harmonictook import Blue, Bot, Card, Game, Green, Stadium, TVStation, UpgradeCard
 from strategy import (
     delta_coverage,
     delta_ev,
@@ -21,6 +21,7 @@ from strategy import (
     pmf_variance,
     round_pmf,
     score_purchase_options,
+    _count_category,
     _landmark_cost_remaining,
     _n_landmarks_remaining,
     _own_turn_coverage,
@@ -29,16 +30,94 @@ from strategy import (
 
 
 def _roll_income(player: Bot, roll: int) -> int:
-    """Coin income from Blue and Green cards in player's deck on a given roll."""
-    return sum(
-        card.payout
-        for card in player.deck.deck
-        if roll in card.hitsOn and isinstance(card, (Blue, Green))
-    )
+    """Coin income for player on their own turn when the die total is roll.
+
+    Covers Blue, Green (including factory multiplication and Shopping Mall bonus),
+    Stadium (payout * 1, conservative floor — exact multiplier requires player list),
+    and TVStation (assumes max 5-coin steal). Used by reroll heuristics; approximations
+    are acceptable as long as profitable rolls register as non-zero.
+    """
+    total = 0
+    for card in player.deck.deck:
+        if roll not in card.hitsOn:
+            continue
+        if isinstance(card, Blue):
+            total += card.payout
+        elif isinstance(card, Green):
+            if getattr(card, "multiplies", None) is not None:
+                total += card.payout * _count_category(player, card.multiplies)
+            else:
+                payout = card.payout
+                if player.hasShoppingMall and card.name == "Convenience Store":
+                    payout += 1
+                total += payout
+        elif isinstance(card, Stadium):
+            # Exact income = payout × n_opponents, unknown here; use payout as a floor.
+            total += card.payout
+        elif isinstance(card, TVStation):
+            # Steal up to 5; assume opponents have coins for reroll decision purposes.
+            total += 5
+    return total
+
+
+def _with_card_bought(player: Bot, card: Card, fn) -> float:
+    """Temporarily buy card (deduct cost, mutate deck/flags), call fn(), restore all state.
+
+    Handles UpgradeCards (set flag + append to deck) and income cards (append only).
+    Restores bank, deck, and flag even if fn() raises.
+    """
+    player.bank -= card.cost
+    if isinstance(card, UpgradeCard):
+        attr = UpgradeCard.orangeCards[card.name][2]
+        old_val = getattr(player, attr, False)
+        setattr(player, attr, True)
+        player.deck.deck.append(card)
+        try:
+            return fn()
+        finally:
+            player.deck.deck.pop()
+            setattr(player, attr, old_val)
+            player.bank += card.cost
+    else:
+        player.deck.deck.append(card)
+        try:
+            return fn()
+        finally:
+            player.deck.deck.pop()
+            player.bank += card.cost
+
+
+def _with_card_appended(player: Bot, card: Card, fn) -> float:
+    """Temporarily append card to deck (no payment, no flag change), call fn(), restore."""
+    player.deck.deck.append(card)
+    try:
+        return fn()
+    finally:
+        player.deck.deck.pop()
+
+
+def _with_card_removed(player: Bot, card: Card, fn) -> float:
+    """Temporarily remove card from deck by identity, call fn(), restore.
+
+    Uses object identity to handle duplicate-name cards correctly.
+    If card is not in deck, fn() is called on the unmodified deck.
+    """
+    idx = next((i for i, c in enumerate(player.deck.deck) if c is card), None)
+    if idx is None:
+        return fn()
+    removed = player.deck.deck.pop(idx)
+    try:
+        return fn()
+    finally:
+        player.deck.deck.insert(idx, removed)
 
 
 def _card_variance(player: Bot, card: Card, players: list) -> float:
-    """Income variance of round_pmf after temporarily adding card (used as tiebreaker)."""
+    """Income variance of round_pmf after temporarily adding card (used as tiebreaker).
+
+    For UpgradeCards, activates the flag without appending to deck or deducting cost —
+    variance reflects the income distribution change only.
+    """
     if isinstance(card, UpgradeCard):
         attr = UpgradeCard.orangeCards[card.name][2]
         old_val = getattr(player, attr, False)
@@ -47,12 +126,7 @@ def _card_variance(player: Bot, card: Card, players: list) -> float:
             return pmf_variance(round_pmf(player, players))
         finally:
             setattr(player, attr, old_val)
-    else:
-        player.deck.deck.append(card)
-        try:
-            return pmf_variance(round_pmf(player, players))
-        finally:
-            player.deck.deck.pop()
+    return _with_card_appended(player, card, lambda: pmf_variance(round_pmf(player, players)))
 
 
 def _eruv_for(player: Bot, players: list) -> float:
@@ -110,32 +184,40 @@ def _dice_by_ev(player: Bot, players: list) -> int:
 class ThoughtfulBot(Bot):
     """Priority-driven bot that follows a fixed card-preference ordering."""
 
-    def chooseCard(self, options: list, game: Game | None = None) -> str | None:
-        """Return the highest-priority card name available in options per the bot's preference list."""
+    # Cards that require a matching-category engine before they have non-zero EV.
+    # key = card name, value = (multiplies_category, minimum_count_needed).
+    _FACTORY_PREREQS: dict[str, tuple[int, int]] = {
+        "Cheese Factory":           (2, 1),  # category 2 = Ranch
+        "Furniture Factory":        (5, 1),  # category 5 = Forest / Mine
+        "Fruit & Vegetable Market": (1, 1),  # category 1 = Wheat Field / Apple Orchard
+    }
+
+    def chooseCard(self, options: list[Card], game: Game | None = None) -> str | None:
+        """Return the highest-priority card name from a list of Card objects.
+
+        When Train Station is owned, latecards are added before earlycards, but factory
+        latecards are skipped if the player has fewer matching-category cards than the
+        required minimum — buying a 0-EV factory is never the right move.
+        """
         if not options:
             return None
-        names = [o.name if isinstance(o, Card) else o for o in options]
-        upgrades = ["Radio Tower",
-        "Amusement Park",
-        "Shopping Mall",
-        "Train Station"]
-        earlycards = ["TV Station",
-        "Business Center",
-        "Stadium",
-        "Forest",
-        "Convenience Store",
-        "Ranch",
-        "Wheat Field",
-        "Cafe",
-        "Bakery"]
-        latecards = ["Mine",
-        "Furniture Factory",
-        "Cheese Factory",
-        "Family Restaurant",
-        "Apple Orchard",
-        "Fruit & Vegetable Market"]
+        names = [c.name for c in options]
+        upgrades = ["Radio Tower", "Amusement Park", "Shopping Mall", "Train Station"]
+        earlycards = [
+            "TV Station", "Business Center", "Stadium", "Forest",
+            "Convenience Store", "Ranch", "Wheat Field", "Cafe", "Bakery",
+        ]
+        latecards = [
+            "Mine", "Furniture Factory", "Cheese Factory",
+            "Family Restaurant", "Apple Orchard", "Fruit & Vegetable Market",
+        ]
         if self.hasTrainStation:
-            preferences = upgrades + latecards + earlycards
+            eligible_latecards = [
+                c for c in latecards
+                if c not in self._FACTORY_PREREQS
+                or _count_category(self, self._FACTORY_PREREQS[c][0]) >= self._FACTORY_PREREQS[c][1]
+            ]
+            preferences = upgrades + eligible_latecards + earlycards
         else:
             preferences = upgrades + earlycards
         for priority in preferences:
@@ -163,33 +245,16 @@ class EVBot(Bot):
     def chooseDice(self, players: list | None = None) -> int:
         return _dice_by_ev(self, players or [self])
 
-    def chooseCard(self, options: list, game: Game | None = None) -> str | None:
-        """Return the name of the highest delta_ev card available in options.
+    def chooseCard(self, options: list[Card], game: Game | None = None) -> str | None:
+        """Return the name of the highest delta_ev Card from options.
 
-        options may be a list of Card objects (scored directly without a game) or
-        string names (resolved from game.market if game is provided; random fallback
-        otherwise). players defaults to [self] when no game is supplied.
+        players defaults to [self] when no game is supplied.
         """
         if not options:
             return None
-        # Card objects: score directly, no game required.
-        card_objects = [o for o in options if isinstance(o, Card)]
-        if card_objects:
-            use_players = list(game.players) if game else [self]
-            scored = score_purchase_options(self, card_objects, use_players, N=self.n_horizon)
-            if scored:
-                return next(iter(scored)).name
-            return random.choice(card_objects).name
-        # String names: resolve to Card objects via market for scoring.
-        if game is not None:
-            option_set = set(options)
-            market_cards = [c for c in game.market.deck if c.name in option_set]
-            if market_cards:
-                scored = score_purchase_options(self, market_cards, game.players, N=self.n_horizon)
-                for card in scored:
-                    if card.name in options:
-                        return card.name
-        return random.choice(options)
+        use_players = list(game.players) if game else [self]
+        scored = score_purchase_options(self, options, use_players, N=self.n_horizon)
+        return next(iter(scored)).name if scored else random.choice(options).name
 
 
 class CoverageBot(Bot):
@@ -202,11 +267,11 @@ class CoverageBot(Bot):
     _own_turn_coverage for 1 vs 2 dice and picks the stronger side.
     """
 
-    def chooseCard(self, options: list, game: Game | None = None) -> str | None:
-        """Always buy a landmark when one is available; otherwise buy the highest-coverage card.
+    def chooseCard(self, options: list[Card], game: Game | None = None) -> str | None:
+        """Buy the highest (delta_coverage, delta_ev) Card; landmarks always take priority.
 
-        options may be Card objects (scored directly) or string names (resolved from
-        game.market when game is supplied; random fallback otherwise).
+        When UpgradeCards are present in options they form the entire candidate pool —
+        the bot never picks an establishment while a landmark is available.
         """
         if not options:
             return None
@@ -214,24 +279,10 @@ class CoverageBot(Bot):
         def _score(c: Card, players: list, all_cards: list) -> tuple:
             return (delta_coverage(c, self, players), delta_ev(c, self, players, market_cards=all_cards))
 
-        # Card objects: landmark-first, then highest (coverage, ev).
-        card_objects = [o for o in options if isinstance(o, Card)]
-        if card_objects:
-            use_players = list(game.players) if game else [self]
-            landmarks = [c for c in card_objects if isinstance(c, UpgradeCard)]
-            pool = landmarks if landmarks else card_objects
-            return max(pool, key=lambda c: _score(c, use_players, card_objects)).name
-
-        # String names: resolve to Card objects via market.
-        if game is not None:
-            option_set = set(options)
-            market_cards = [c for c in game.market.deck if c.name in option_set]
-            if market_cards:
-                landmarks = [c for c in market_cards if isinstance(c, UpgradeCard)]
-                pool = landmarks if landmarks else market_cards
-                return max(pool, key=lambda c: _score(c, game.players, market_cards)).name
-
-        return random.choice(options)
+        use_players = list(game.players) if game else [self]
+        landmarks = [c for c in options if isinstance(c, UpgradeCard)]
+        pool = landmarks if landmarks else options
+        return max(pool, key=lambda c: _score(c, use_players, options)).name
 
     def chooseDice(self, players: list | None = None) -> int:
         """Roll 2 dice if they cover more of the deck's hitsOn range than 1 die; else roll 1."""
@@ -273,7 +324,15 @@ class ImpatientBot(Bot):
         return self._own_income_for_roll(last_roll) <= threshold
 
     def chooseAction(self, availableCards) -> str:
-        """Buy only if at least one affordable card reduces ERUV; otherwise pass."""
+        """Buy a landmark if affordable; buy income card only if it reduces ERUV; else pass.
+
+        Landmarks are checked via checkRemainingUpgrades() — they are never in the market
+        deck and cannot be detected by iterating availableCards.deck.
+        """
+        # Landmarks are the win condition — always buy one if it's within reach.
+        for upgrade in self.checkRemainingUpgrades():
+            if upgrade.cost <= self.bank:
+                return 'buy'
         options = availableCards.names(maxcost=self.bank)
         if not options:
             return 'pass'
@@ -285,42 +344,23 @@ class ImpatientBot(Bot):
                 return 'buy'
         return 'pass'
 
-    def chooseCard(self, options: list, game: Game | None = None) -> str | None:
-        """Return the card name that minimizes post-purchase ERUV.
+    def chooseCard(self, options: list[Card], game: Game | None = None) -> str | None:
+        """Return the name of the Card that minimizes post-purchase ERUV.
 
-        Ties are broken by income variance — lower variance (more predictable path)
-        wins. Falls back to random.choice if no card can be resolved to a Card object.
+        Ties broken by income variance (lower = more predictable path to victory).
         """
         if not options:
             return None
-        names = [o.name if isinstance(o, Card) else o for o in options]
         players = list(game.players) if game else [self]
-
-        # Resolve names to Card objects: prefer explicit Card objects, then market lookup.
-        cards_by_name: dict[str, Card] = {}
-        for o in options:
-            if isinstance(o, Card):
-                cards_by_name[o.name] = o
-        if game:
-            for c in game.market.deck:
-                if c.name in set(names) and c.name not in cards_by_name:
-                    cards_by_name[c.name] = c
-
-        if not cards_by_name:
-            return random.choice(names)
-
         best_name: str | None = None
         best_tuv = float('inf')
         best_var = float('inf')
-        for name in names:
-            card = cards_by_name.get(name)
-            if card is None:
-                continue
+        for card in options:
             t = self._tuv_after_buy(card, players)
             v = self._var_after_buy(card, players)
             if t < best_tuv or (t == best_tuv and v < best_var):
-                best_tuv, best_var, best_name = t, v, name
-        return best_name if best_name is not None else random.choice(names)
+                best_tuv, best_var, best_name = t, v, card.name
+        return best_name if best_name is not None else random.choice(options).name
 
     def chooseBusinessCenterSwap(
         self, target, my_swappable: list, their_swappable: list
@@ -343,84 +383,28 @@ class ImpatientBot(Bot):
     # ------------------------------------------------------------------
 
     def _own_income_for_roll(self, roll: int) -> int:
-        """Coin income from Blue and Green cards in this player's deck on a given roll."""
-        return sum(
-            card.payout
-            for card in self.deck.deck
-            if roll in card.hitsOn and isinstance(card, (Blue, Green))
-        )
+        """Coin income on own turn for a given roll. Delegates to module-level _roll_income."""
+        return _roll_income(self, roll)
 
     def _tuv_with(self, players: list) -> float:
-        """Compute ERUV from a players list (mirrors tuv_expected without requiring Game)."""
-        n_lm = _n_landmarks_remaining(self)
-        cost = _landmark_cost_remaining(self)
-        income = pmf_mean(round_pmf(self, players))
-        if income <= 0:
-            return float(n_lm)
-        deficit = max(0, cost - self.bank)
-        return float(max(n_lm, math.ceil(deficit / income)))
+        """ERUV from a players list. Delegates to module-level _eruv_for."""
+        return _eruv_for(self, players)
 
     def _tuv_after_buy(self, card: Card, players: list) -> float:
-        """ERUV if we buy card: deduct cost, mutate deck/flags, compute, restore."""
-        self.bank -= card.cost
-        if isinstance(card, UpgradeCard):
-            attr = UpgradeCard.orangeCards[card.name][2]
-            old_val = getattr(self, attr, False)
-            setattr(self, attr, True)
-            self.deck.deck.append(card)
-            try:
-                return self._tuv_with(players)
-            finally:
-                self.deck.deck.pop()
-                setattr(self, attr, old_val)
-                self.bank += card.cost
-        else:
-            self.deck.deck.append(card)
-            try:
-                return self._tuv_with(players)
-            finally:
-                self.deck.deck.pop()
-                self.bank += card.cost
+        """ERUV after buying card (deduct cost, mutate deck/flags, compute, restore)."""
+        return _with_card_bought(self, card, lambda: self._tuv_with(players))
 
     def _tuv_after_add(self, card: Card, players: list) -> float:
-        """ERUV if we add card to deck with no payment (Business Center take evaluation)."""
-        self.deck.deck.append(card)
-        try:
-            return self._tuv_with(players)
-        finally:
-            self.deck.deck.pop()
+        """ERUV after adding card with no payment (Business Center take evaluation)."""
+        return _with_card_appended(self, card, lambda: self._tuv_with(players))
 
     def _tuv_after_remove(self, card: Card, players: list) -> float:
-        """ERUV if we remove card from deck (Business Center give evaluation).
-
-        Identifies the card by identity (not equality) to avoid removing the wrong
-        instance when duplicates share a sortvalue.
-        """
-        idx = next((i for i, c in enumerate(self.deck.deck) if c is card), None)
-        if idx is None:
-            return self._tuv_with(players)
-        removed = self.deck.deck.pop(idx)
-        try:
-            return self._tuv_with(players)
-        finally:
-            self.deck.deck.insert(idx, removed)
+        """ERUV after removing card from deck by identity (Business Center give evaluation)."""
+        return _with_card_removed(self, card, lambda: self._tuv_with(players))
 
     def _var_after_buy(self, card: Card, players: list) -> float:
-        """Income variance after buying card (used as tiebreaker in chooseCard)."""
-        if isinstance(card, UpgradeCard):
-            attr = UpgradeCard.orangeCards[card.name][2]
-            old_val = getattr(self, attr, False)
-            setattr(self, attr, True)
-            try:
-                return pmf_variance(round_pmf(self, players))
-            finally:
-                setattr(self, attr, old_val)
-        else:
-            self.deck.deck.append(card)
-            try:
-                return pmf_variance(round_pmf(self, players))
-            finally:
-                self.deck.deck.pop()
+        """Income variance if card were active (no payment). Delegates to _card_variance."""
+        return _card_variance(self, card, players)
 
 
 class FromageBot(Bot):
@@ -476,15 +460,15 @@ class FromageBot(Bot):
         """Count copies of a card by name in this player's deck."""
         return sum(1 for c in self.deck.deck if c.name == name)
 
-    def chooseCard(self, options: list, game: Game | None = None) -> str | None:
-        """Return the first priority-list card whose count is below its cap.
+    def chooseCard(self, options: list[Card], game: Game | None = None) -> str | None:
+        """Return the first priority-list Card whose count is below its cap.
 
-        Falls back to options not yet at their cap; if everything is at cap,
+        Falls back to Cards not yet at their cap; if everything is at cap,
         picks uniformly at random from all options.
         """
         if not options:
             return None
-        names = [o.name if isinstance(o, Card) else o for o in options]
+        names = [c.name for c in options]
         name_set = set(names)
         for card_name, cap in self.PRIORITY:
             if card_name in name_set and self._count(card_name) < cap:
@@ -554,16 +538,19 @@ class MarathonBot(Bot):
         return income <= incomes[3]  # bottom third of 12 outcomes
 
     def chooseAction(self, availableCards) -> str:
-        """Buy a landmark if affordable; buy income card only if P(win in N) improves; else coast."""
+        """Buy a landmark if affordable; buy income card only if P(win in N) improves; else coast.
+
+        Landmarks are checked via checkRemainingUpgrades() — they are never in the market
+        deck and cannot be detected by iterating availableCards.deck.
+        """
+        # Landmarks are the win condition — always buy one if it's within reach.
+        for upgrade in self.checkRemainingUpgrades():
+            if upgrade.cost <= self.bank:
+                return 'buy'
         options = availableCards.names(maxcost=self.bank)
         if not options:
             return 'pass'
         players = [self]
-        # Landmarks are the win condition — always buy one if it's within reach.
-        for name in options:
-            card = next((c for c in availableCards.deck if c.name == name), None)
-            if card is not None and isinstance(card, UpgradeCard):
-                return 'buy'
         # Income card: only buy if doing so raises P(win in N) above coasting.
         n = self._target_n(players)
         base_pwn = _prob_win_in_n_rounds(self, players, n)
@@ -573,38 +560,21 @@ class MarathonBot(Bot):
                 return 'buy'
         return 'pass'
 
-    def chooseCard(self, options: list, game: 'Game | None' = None) -> str | None:
-        """Return the card that maximises P(win in N). Tiebreak: lower income variance."""
+    def chooseCard(self, options: list[Card], game: Game | None = None) -> str | None:
+        """Return the name of the Card that maximises P(win in N). Tiebreak: lower income variance."""
         if not options:
             return None
-        names = [o.name if isinstance(o, Card) else o for o in options]
         players = list(game.players) if game else [self]
         n = self._target_n(players)
-
-        cards_by_name: dict[str, Card] = {}
-        for o in options:
-            if isinstance(o, Card):
-                cards_by_name[o.name] = o
-        if game:
-            for c in game.market.deck:
-                if c.name in set(names) and c.name not in cards_by_name:
-                    cards_by_name[c.name] = c
-
-        if not cards_by_name:
-            return random.choice(names)
-
         best_name: str | None = None
         best_pwn = -1.0
         best_var = float('inf')
-        for name in names:
-            card = cards_by_name.get(name)
-            if card is None:
-                continue
+        for card in options:
             p = self._pwn_after_buy(card, players, n)
             v = _card_variance(self, card, players)
             if p > best_pwn or (p == best_pwn and v < best_var):
-                best_pwn, best_var, best_name = p, v, name
-        return best_name if best_name is not None else random.choice(names)
+                best_pwn, best_var, best_name = p, v, card.name
+        return best_name if best_name is not None else random.choice(options).name
 
     def chooseTarget(self, players: list) -> 'Bot | None':
         """Steal from the opponent with the lowest ERUV; tiebreak on richest."""
@@ -630,45 +600,16 @@ class MarathonBot(Bot):
     # ------------------------------------------------------------------
 
     def _pwn_after_buy(self, card: Card, players: list, n: int) -> float:
-        """P(win in N) after buying card: deduct cost, mutate deck/flags, compute, restore."""
-        self.bank -= card.cost
-        if isinstance(card, UpgradeCard):
-            attr = UpgradeCard.orangeCards[card.name][2]
-            old_val = getattr(self, attr, False)
-            setattr(self, attr, True)
-            self.deck.deck.append(card)
-            try:
-                return _prob_win_in_n_rounds(self, players, n)
-            finally:
-                self.deck.deck.pop()
-                setattr(self, attr, old_val)
-                self.bank += card.cost
-        else:
-            self.deck.deck.append(card)
-            try:
-                return _prob_win_in_n_rounds(self, players, n)
-            finally:
-                self.deck.deck.pop()
-                self.bank += card.cost
+        """P(win in N) after buying card (deduct cost, mutate deck/flags, compute, restore)."""
+        return _with_card_bought(self, card, lambda: _prob_win_in_n_rounds(self, players, n))
 
     def _pwn_after_add(self, card: Card, players: list, n: int) -> float:
         """P(win in N) after adding card with no payment (Business Center take)."""
-        self.deck.deck.append(card)
-        try:
-            return _prob_win_in_n_rounds(self, players, n)
-        finally:
-            self.deck.deck.pop()
+        return _with_card_appended(self, card, lambda: _prob_win_in_n_rounds(self, players, n))
 
     def _pwn_after_remove(self, card: Card, players: list, n: int) -> float:
-        """P(win in N) after removing card from deck (Business Center give)."""
-        idx = next((i for i, c in enumerate(self.deck.deck) if c is card), None)
-        if idx is None:
-            return _prob_win_in_n_rounds(self, players, n)
-        removed = self.deck.deck.pop(idx)
-        try:
-            return _prob_win_in_n_rounds(self, players, n)
-        finally:
-            self.deck.deck.insert(idx, removed)
+        """P(win in N) after removing card from deck by identity (Business Center give)."""
+        return _with_card_removed(self, card, lambda: _prob_win_in_n_rounds(self, players, n))
 
 
 def _kinematic_n(

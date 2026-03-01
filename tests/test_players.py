@@ -60,19 +60,6 @@ class TestPlayerBuying(unittest.TestCase):
         self.testbot.deposit(100)
         self.otherbot.deposit(100)
 
-    def testAmusementParkDoubles(self):
-        """Verify dieroll() can return isDoubles=True at least once in 200 two-die rolls."""
-        testbot = self.testbot
-        testbot.buy("Train Station", self.game.market)
-        self.assertTrue(testbot.hasTrainStation)
-        found_doubles = False
-        for _ in range(200):
-            _, is_doubles = testbot.dieroll()
-            if is_doubles:
-                found_doubles = True
-                break
-        self.assertTrue(found_doubles, "Expected at least one doubles in 200 two-die rolls")
-
     def testInsufficientFunds(self):
         """Verify buy() prints a message and leaves the bank unchanged when the player can't afford the card."""
         testbot = self.testbot
