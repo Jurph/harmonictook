@@ -6,3 +6,7 @@
 
 coverage
 codecov
+
+# Optional: full-screen TUI (ColorTUIDisplay in color_tui.py)
+# Not required for core game or PlainTextDisplay.
+textual
