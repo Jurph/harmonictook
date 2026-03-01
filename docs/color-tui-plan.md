@@ -47,7 +47,7 @@ Minimum terminal size: 120×40. Layout divides player columns equally by N.
 - `python color_tui.py` renders the layout visually
 - No game logic; no Display protocol wiring yet
 
-### Commit 3 — `show_state()` populates panels
+### ✅ Commit 3 — `show_state()` populates panels
 - `show_state(game)` reads `game.get_player_state()` / `game.get_market_state()` and updates widgets
 - Threading bridge not yet needed (push only, no return value)
 - Tested via Textual's `App.run_test()` headless mode
