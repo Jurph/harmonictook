@@ -1104,6 +1104,7 @@ class Game:
             events=events,
         ))
         self.turn_number += 1
+        display.show_state(self)
         return events
 
     def _declare_winner(self, player: Player, display: Display) -> None:

@@ -686,7 +686,7 @@ class TestHumanKeyHandling(unittest.IsolatedAsyncioTestCase):
             content = self._io_panel_content(app)
 
         for i, opt in enumerate(options, 1):
-            self.assertIn(f"[{i}]", content)
+            self.assertIn(f"{i}.", content)
             self.assertIn(opt, content)
 
     async def test_io_panel_shows_buffer_as_user_types(self):

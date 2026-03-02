@@ -10,8 +10,9 @@ from __future__ import annotations
 import asyncio
 import threading
 
+from rich.markup import escape
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 from textual.events import Key
 from textual.widgets import RichLog, Static
 
@@ -66,7 +67,7 @@ class IOPanel(Static):
 
     DEFAULT_CSS = """
     IOPanel {
-        height: auto;
+        height: 1fr;
         border: solid $warning-darken-1;
         padding: 0 1;
     }
@@ -334,7 +335,9 @@ class HarmonicTookApp(App):
     TITLE = "Harmonic Took"
     BINDINGS = [("q", "quit", "Quit")]
     CSS = """
+    #top-area    { height: 1fr; }
     #player-area { height: 1fr; }
+    #bottom-area { dock: bottom; height: 16; }
     """
 
     def __init__(self, game: Game | None = None,
@@ -352,23 +355,25 @@ class HarmonicTookApp(App):
             display.app = self
 
     def compose(self) -> ComposeResult:
-        yield MarketPanel(_PLACEHOLDER_MARKET if self.game is None else "", id="market")
-        with Horizontal(id="player-area"):
-            if self.game is None:
-                for name, coins, cards, landmarks, active in _PLACEHOLDER_PLAYERS:
-                    yield PlayerPanel(
-                        _player_markup(name, coins, cards, landmarks, active),
-                        classes="active" if active else "inactive",
-                    )
-            else:
-                active_player = self.game.get_current_player()
-                for player in self.game.players:
-                    yield PlayerPanel(
-                        "",
-                        classes="active" if player is active_player else "inactive",
-                    )
-        yield EventLog(id="event-log")
-        yield IOPanel(_PLACEHOLDER_IO if self.game is None else "", id="io-panel")
+        with Vertical(id="top-area"):
+            yield MarketPanel(_PLACEHOLDER_MARKET if self.game is None else "", id="market")
+            with Horizontal(id="player-area"):
+                if self.game is None:
+                    for name, coins, cards, landmarks, active in _PLACEHOLDER_PLAYERS:
+                        yield PlayerPanel(
+                            _player_markup(name, coins, cards, landmarks, active),
+                            classes="active" if active else "inactive",
+                        )
+                else:
+                    active_player = self.game.get_current_player()
+                    for player in self.game.players:
+                        yield PlayerPanel(
+                            "",
+                            classes="active" if player is active_player else "inactive",
+                        )
+        with Vertical(id="bottom-area"):
+            yield EventLog(id="event-log")
+            yield IOPanel(_PLACEHOLDER_IO if self.game is None else "", id="io-panel")
 
     def on_mount(self) -> None:
         if self.game is not None:
@@ -422,15 +427,16 @@ class HarmonicTookApp(App):
         self._bridge_options = list(options)
         self._bridge_mode = "pick_one"
         self._key_buffer = ""
+        width = len(str(len(options)))
         self._last_prompt = "\n".join(
-            f"[{i + 1}] {formatter(opt)}" for i, opt in enumerate(options)
+            f"{i + 1:{width}}. {escape(str(formatter(opt)))}" for i, opt in enumerate(options)
         )
         self._refresh_io_panel()
 
     def show_confirm_prompt(self, prompt: str) -> None:
         """Update IOPanel with a yes/no prompt and enter confirm mode."""
         self._bridge_mode = "confirm"
-        self.query_one(IOPanel).update(f"{prompt} [y/n]")
+        self.query_one(IOPanel).update(escape(prompt))
 
     def show_info_text(self, content: str) -> None:
         """Write informational content to the EventLog."""
