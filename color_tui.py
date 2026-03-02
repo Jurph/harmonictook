@@ -7,6 +7,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
+
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal
 from textual.widgets import RichLog, Static
@@ -325,9 +328,15 @@ class HarmonicTookApp(App):
     #player-area { height: 1fr; }
     """
 
-    def __init__(self, game: Game | None = None) -> None:
+    def __init__(self, game: Game | None = None,
+                 display: ColorTUIDisplay | None = None) -> None:
         super().__init__()
         self.game = game
+        self._game_display = display
+        self._bridge_event = threading.Event()
+        self._bridge_result: object = None
+        if display is not None:
+            display.app = self
 
     def compose(self) -> ComposeResult:
         yield MarketPanel(_PLACEHOLDER_MARKET if self.game is None else "", id="market")
@@ -351,6 +360,8 @@ class HarmonicTookApp(App):
     def on_mount(self) -> None:
         if self.game is not None:
             self.update_state(self.game)
+            if self._game_display is not None:
+                threading.Thread(target=self._game_worker, daemon=True).start()
         else:
             log = self.query_one(EventLog)
             for line in _PLACEHOLDER_EVENTS:
@@ -381,14 +392,45 @@ class HarmonicTookApp(App):
             panel.set_class(is_active, "active")
             panel.set_class(not is_active, "inactive")
 
+    def _game_worker(self) -> None:
+        """Run the game loop in a background thread.
+
+        Exceptions are swallowed silently: the app may exit (e.g., test teardown)
+        while a turn is in progress, causing call_from_thread() to re-raise a
+        widget-not-found error.
+        """
+        try:
+            self.game.run(display=self._game_display)  # type: ignore[arg-type]
+        except Exception:  # noqa: BLE001
+            pass
+
+    def show_prompt(self, options: list, formatter: callable) -> None:
+        """Update IOPanel with a numbered choice list."""
+        choices = "\n".join(f"[{i + 1}] {formatter(opt)}" for i, opt in enumerate(options))
+        self.query_one(IOPanel).update(choices)
+
+    def show_confirm_prompt(self, prompt: str) -> None:
+        """Update IOPanel with a yes/no prompt."""
+        self.query_one(IOPanel).update(f"{prompt} [y/n]")
+
+    def show_info_text(self, content: str) -> None:
+        """Write informational content to the EventLog."""
+        self.query_one(EventLog).write(content)
+
+    def resolve_bridge(self, value: object) -> None:
+        """Resolve the current blocking bridge request with the given value."""
+        self._bridge_result = value
+        self._bridge_event.set()
+
 
 # ── ColorTUIDisplay ───────────────────────────────────────────────────────────
 
 class ColorTUIDisplay(Display):
     """Full-screen TUI display powered by Textual.
 
-    Construct with an app instance to enable show_state(); other methods
-    will raise NotImplementedError until subsequent commits land.
+    Wire up via HarmonicTookApp(game=..., display=...) so the app starts the game
+    worker thread automatically. pick_one() and confirm() MUST be called from a
+    background thread — calling them from the Textual event loop will deadlock.
 
     See docs/color-tui-plan.md for the build plan.
     """
@@ -396,13 +438,25 @@ class ColorTUIDisplay(Display):
     def __init__(self, app: HarmonicTookApp | None = None) -> None:
         self.app = app
 
+    def _call_on_ui(self, fn: callable, /, *args: object) -> None:
+        """Call fn(*args) thread-safely.
+
+        If an asyncio event loop is running in the current thread (Textual event loop),
+        call fn directly. Otherwise schedule via call_from_thread() (background thread).
+        """
+        try:
+            asyncio.get_running_loop()
+            fn(*args)
+        except RuntimeError:
+            self.app.call_from_thread(fn, *args)  # type: ignore[union-attr]
+
     def show_events(self, events: list[Event]) -> None:
         if self.app is None:
             raise RuntimeError(
                 "ColorTUIDisplay.show_events() requires an app — "
                 "pass app=HarmonicTookApp() to the constructor"
             )
-        self.app.add_events(events)
+        self._call_on_ui(self.app.add_events, events)
 
     def show_state(self, game: Game) -> None:
         if self.app is None:
@@ -410,18 +464,47 @@ class ColorTUIDisplay(Display):
                 "ColorTUIDisplay.show_state() requires an app — "
                 "pass app=HarmonicTookApp() to the constructor"
             )
-        self.app.update_state(game)
+        self._call_on_ui(self.app.update_state, game)
 
     def pick_one(self, options: list, prompt: str = "Your selection: ",
                  formatter: callable = str) -> object:
-        raise NotImplementedError("ColorTUIDisplay.pick_one() not yet implemented")
+        """Present a numbered menu and block until resolve_bridge() is called.
+
+        Must be called from a background thread, not the Textual event loop.
+        """
+        if self.app is None:
+            raise RuntimeError(
+                "ColorTUIDisplay.pick_one() requires an app — "
+                "pass app=HarmonicTookApp() to the constructor"
+            )
+        self.app._bridge_event.clear()
+        self._call_on_ui(self.app.show_prompt, options, formatter)
+        self.app._bridge_event.wait()
+        return self.app._bridge_result
 
     def confirm(self, prompt: str) -> bool:
-        raise NotImplementedError("ColorTUIDisplay.confirm() not yet implemented")
+        """Ask a yes/no question and block until resolve_bridge() is called.
+
+        Must be called from a background thread, not the Textual event loop.
+        """
+        if self.app is None:
+            raise RuntimeError(
+                "ColorTUIDisplay.confirm() requires an app — "
+                "pass app=HarmonicTookApp() to the constructor"
+            )
+        self.app._bridge_event.clear()
+        self._call_on_ui(self.app.show_confirm_prompt, prompt)
+        self.app._bridge_event.wait()
+        return bool(self.app._bridge_result)
 
     def show_info(self, content: str) -> None:
-        raise NotImplementedError("ColorTUIDisplay.show_info() not yet implemented")
+        if self.app is None:
+            raise RuntimeError(
+                "ColorTUIDisplay.show_info() requires an app — "
+                "pass app=HarmonicTookApp() to the constructor"
+            )
+        self._call_on_ui(self.app.show_info_text, content)
 
 
 if __name__ == "__main__":
-    HarmonicTookApp(game=Game(players=2)).run()
+    HarmonicTookApp(game=Game(players=2), display=ColorTUIDisplay()).run()

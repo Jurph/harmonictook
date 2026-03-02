@@ -2,6 +2,7 @@
 # -*- coding: UTF-8 -*-
 # tests/test_color_tui.py — ColorTUIDisplay and HarmonicTookApp layout tests
 
+import threading
 import unittest
 from harmonictook import Display, Event, Game, UpgradeCard
 
@@ -33,19 +34,19 @@ class TestColorTUIDisplaySkeleton(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.cls().show_state(game)
 
-    def test_pick_one_raises_not_implemented(self):
-        """pick_one() raises NotImplementedError until Commit 5 lands."""
-        with self.assertRaises(NotImplementedError):
+    def test_pick_one_raises_runtime_error_without_app(self):
+        """pick_one() raises RuntimeError when no app has been connected."""
+        with self.assertRaises(RuntimeError):
             self.cls().pick_one(["a", "b"])
 
-    def test_confirm_raises_not_implemented(self):
-        """confirm() raises NotImplementedError until Commit 5 lands."""
-        with self.assertRaises(NotImplementedError):
+    def test_confirm_raises_runtime_error_without_app(self):
+        """confirm() raises RuntimeError when no app has been connected."""
+        with self.assertRaises(RuntimeError):
             self.cls().confirm("Continue?")
 
-    def test_show_info_raises_not_implemented(self):
-        """show_info() raises NotImplementedError until Commit 5 lands."""
-        with self.assertRaises(NotImplementedError):
+    def test_show_info_raises_runtime_error_without_app(self):
+        """show_info() raises RuntimeError when no app has been connected."""
+        with self.assertRaises(RuntimeError):
             self.cls().show_info("hello")
 
     def test_import_does_not_open_terminal(self):
@@ -433,6 +434,106 @@ class TestHarmonicTookAppAddEvents(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(len(app.query_one(EventLog).lines), before + 1)
             self.assertIn("Bot1", self._line_text(app.query_one(EventLog)))
+
+
+class TestThreadingBridge(unittest.IsolatedAsyncioTestCase):
+    """pick_one(), confirm(), and show_info() use the threading.Event bridge."""
+
+    def _line_text(self, log: object) -> str:
+        return " ".join(
+            "".join(seg.text for seg in strip) for strip in log.lines  # type: ignore[attr-defined]
+        )
+
+    async def test_pick_one_returns_selected_item(self):
+        """pick_one() in a background thread returns the item resolved by resolve_bridge()."""
+        from color_tui import HarmonicTookApp, ColorTUIDisplay  # noqa: PLC0415
+        game = Game(players=2)
+        display = ColorTUIDisplay()
+        app = HarmonicTookApp(game=game, display=display)
+        options = ["Buy Ranch", "Pass"]
+        result_holder: list = []
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            def worker() -> None:
+                result_holder.append(display.pick_one(options))
+
+            t = threading.Thread(target=worker, daemon=True)
+            t.start()
+            await pilot.pause(0.1)   # let the worker block on bridge_event
+            app.resolve_bridge(options[1])
+            t.join(timeout=2.0)
+
+        self.assertEqual(result_holder, ["Pass"])
+
+    async def test_confirm_returns_true_for_truthy_value(self):
+        """confirm() in a background thread returns True when resolved with a truthy value."""
+        from color_tui import HarmonicTookApp, ColorTUIDisplay  # noqa: PLC0415
+        game = Game(players=2)
+        display = ColorTUIDisplay()
+        app = HarmonicTookApp(game=game, display=display)
+        result_holder: list = []
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            def worker() -> None:
+                result_holder.append(display.confirm("Roll two dice?"))
+
+            t = threading.Thread(target=worker, daemon=True)
+            t.start()
+            await pilot.pause(0.1)
+            app.resolve_bridge(True)
+            t.join(timeout=2.0)
+
+        self.assertEqual(result_holder, [True])
+
+    async def test_confirm_returns_false_for_falsy_value(self):
+        """confirm() returns False when resolved with a falsy value."""
+        from color_tui import HarmonicTookApp, ColorTUIDisplay  # noqa: PLC0415
+        game = Game(players=2)
+        display = ColorTUIDisplay()
+        app = HarmonicTookApp(game=game, display=display)
+        result_holder: list = []
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            def worker() -> None:
+                result_holder.append(display.confirm("Re-roll?"))
+
+            t = threading.Thread(target=worker, daemon=True)
+            t.start()
+            await pilot.pause(0.1)
+            app.resolve_bridge(False)
+            t.join(timeout=2.0)
+
+        self.assertEqual(result_holder, [False])
+
+    async def test_show_info_writes_to_event_log(self):
+        """show_info() writes content to the EventLog via the Textual thread."""
+        from color_tui import HarmonicTookApp, ColorTUIDisplay, EventLog  # noqa: PLC0415
+        game = Game(players=2)
+        # Pass app= directly so display.app is set but the game worker is NOT started
+        # (no display= arg to HarmonicTookApp, so on_mount() skips threading.Thread).
+        app = HarmonicTookApp(game=game)
+        display = ColorTUIDisplay(app=app)
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            before = len(app.query_one(EventLog).lines)
+            display.show_info("informational message for the player")
+            await pilot.pause()
+            self.assertEqual(len(app.query_one(EventLog).lines), before + 1)
+
+    async def test_bot_game_worker_logs_events(self):
+        """A bot-only game started via HarmonicTookApp produces event log entries."""
+        from color_tui import HarmonicTookApp, ColorTUIDisplay, EventLog  # noqa: PLC0415
+        game = Game(players=2)
+        display = ColorTUIDisplay()
+        app = HarmonicTookApp(game=game, display=display)
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            # Worker thread started by on_mount(); let it run a few turns
+            await pilot.pause(0.3)
+            log = app.query_one(EventLog)
+            self.assertGreater(len(log.lines), 0,
+                               "No events logged — worker thread may not have started")
 
 
 if __name__ == "__main__":
