@@ -56,14 +56,15 @@ Minimum terminal size: 120×40. Layout divides player columns equally by N.
 - Events render into the scrolling log panel
 - Tested: feed known `Event` objects, assert text appears in log widget
 
-### Commit 5 — Threading bridge (human input)
+### ✅ Commit 5 — Threading bridge (human input)
 - `pick_one()`, `confirm()`, `show_info()` via `threading.Event` handshake
 - Worker thread blocks; Textual UI resolves and unblocks
 - Bot-only game can run end-to-end through `ColorTUIDisplay`
 - Tested: mock Textual app response, verify bridge returns correctly and unblocks
 
-### Commit 6 — Human play
+### ✅ Commit 6 — Human play
 - I/O panel responds to keypresses; resolves the threading bridge
+- Multi-digit input + Enter for `pick_one`; single y/n for `confirm`; Backspace corrects buffer
 - A human can play a full game in the TUI
 
 ## Future

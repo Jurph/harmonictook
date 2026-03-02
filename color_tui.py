@@ -12,6 +12,7 @@ import threading
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal
+from textual.events import Key
 from textual.widgets import RichLog, Static
 
 from harmonictook import (
@@ -65,7 +66,7 @@ class IOPanel(Static):
 
     DEFAULT_CSS = """
     IOPanel {
-        height: 3;
+        height: auto;
         border: solid $warning-darken-1;
         padding: 0 1;
     }
@@ -335,6 +336,10 @@ class HarmonicTookApp(App):
         self._game_display = display
         self._bridge_event = threading.Event()
         self._bridge_result: object = None
+        self._bridge_mode: str | None = None   # "pick_one" | "confirm" | None
+        self._bridge_options: list = []
+        self._key_buffer: str = ""
+        self._last_prompt: str = ""
         if display is not None:
             display.app = self
 
@@ -405,22 +410,64 @@ class HarmonicTookApp(App):
             pass
 
     def show_prompt(self, options: list, formatter: callable) -> None:
-        """Update IOPanel with a numbered choice list."""
-        choices = "\n".join(f"[{i + 1}] {formatter(opt)}" for i, opt in enumerate(options))
-        self.query_one(IOPanel).update(choices)
+        """Update IOPanel with a numbered choice list and enter pick_one mode."""
+        self._bridge_options = list(options)
+        self._bridge_mode = "pick_one"
+        self._key_buffer = ""
+        self._last_prompt = "\n".join(
+            f"[{i + 1}] {formatter(opt)}" for i, opt in enumerate(options)
+        )
+        self._refresh_io_panel()
 
     def show_confirm_prompt(self, prompt: str) -> None:
-        """Update IOPanel with a yes/no prompt."""
+        """Update IOPanel with a yes/no prompt and enter confirm mode."""
+        self._bridge_mode = "confirm"
         self.query_one(IOPanel).update(f"{prompt} [y/n]")
 
     def show_info_text(self, content: str) -> None:
         """Write informational content to the EventLog."""
         self.query_one(EventLog).write(content)
 
+    def _refresh_io_panel(self) -> None:
+        """Redraw the IOPanel with the current prompt and key-buffer cursor."""
+        self.query_one(IOPanel).update(f"{self._last_prompt}\n> {self._key_buffer}_")
+
     def resolve_bridge(self, value: object) -> None:
-        """Resolve the current blocking bridge request with the given value."""
+        """Resolve the current blocking bridge request and clear the IOPanel."""
+        self._bridge_mode = None
+        self._bridge_options = []
+        self._key_buffer = ""
+        self.query_one(IOPanel).update("")
         self._bridge_result = value
         self._bridge_event.set()
+
+    def on_key(self, event: Key) -> None:
+        """Route keypresses to the active bridge request."""
+        if self._bridge_mode == "confirm":
+            if event.character in ("y", "Y"):
+                event.stop()
+                self.resolve_bridge(True)
+            elif event.character in ("n", "N"):
+                event.stop()
+                self.resolve_bridge(False)
+        elif self._bridge_mode == "pick_one":
+            if event.key == "backspace":
+                self._key_buffer = self._key_buffer[:-1]
+                self._refresh_io_panel()
+                event.stop()
+            elif event.key == "enter":
+                try:
+                    idx = int(self._key_buffer) - 1
+                except ValueError:
+                    return
+                if 0 <= idx < len(self._bridge_options):
+                    event.stop()
+                    self._key_buffer = ""
+                    self.resolve_bridge(self._bridge_options[idx])
+            elif event.character is not None and event.character.isdigit():
+                self._key_buffer += event.character
+                self._refresh_io_panel()
+                event.stop()
 
 
 # ── ColorTUIDisplay ───────────────────────────────────────────────────────────

@@ -536,5 +536,112 @@ class TestThreadingBridge(unittest.IsolatedAsyncioTestCase):
                                "No events logged — worker thread may not have started")
 
 
+class TestHumanKeyHandling(unittest.IsolatedAsyncioTestCase):
+    """Keypresses in pick_one and confirm modes resolve the bridge correctly."""
+
+    async def _app_with_game(self):
+        """Return a fresh HarmonicTookApp with no worker thread."""
+        from color_tui import HarmonicTookApp  # noqa: PLC0415
+        # No display= arg → on_mount() skips the worker thread
+        return HarmonicTookApp(game=Game(players=2))
+
+    async def test_number_and_enter_resolve_pick_one(self):
+        """Typing a digit and pressing Enter resolves pick_one with the matching option."""
+        app = await self._app_with_game()
+        options = ["Wheat Field", "Ranch", "Pass"]
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app.show_prompt(options, str)
+            await pilot.press("2")
+            await pilot.press("enter")
+            await pilot.pause()
+
+        self.assertEqual(app._bridge_result, "Ranch")
+
+    async def test_multi_digit_and_enter_resolve_pick_one(self):
+        """Typing a two-digit number and Enter resolves pick_one with option[idx]."""
+        app = await self._app_with_game()
+        options = [f"Option {i}" for i in range(1, 12)]   # 11 options
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app.show_prompt(options, str)
+            await pilot.press("1")
+            await pilot.press("1")
+            await pilot.press("enter")
+            await pilot.pause()
+
+        self.assertEqual(app._bridge_result, "Option 11")
+
+    async def test_backspace_corrects_buffer(self):
+        """Backspace removes the last typed digit; Enter resolves with the corrected index."""
+        app = await self._app_with_game()
+        options = ["A", "B", "C"]
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app.show_prompt(options, str)
+            await pilot.press("2")
+            await pilot.press("backspace")
+            await pilot.press("3")
+            await pilot.press("enter")
+            await pilot.pause()
+
+        self.assertEqual(app._bridge_result, "C")
+
+    async def test_out_of_range_entry_does_not_resolve(self):
+        """Entering a number larger than the option count does not resolve the bridge."""
+        app = await self._app_with_game()
+        options = ["A", "B"]
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app.show_prompt(options, str)
+            await pilot.press("9")
+            await pilot.press("enter")
+            await pilot.pause()
+
+        self.assertIsNone(app._bridge_result)
+
+    async def test_y_resolves_confirm_true(self):
+        """Pressing 'y' when in confirm mode resolves the bridge with True."""
+        app = await self._app_with_game()
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app.show_confirm_prompt("Roll two dice?")
+            await pilot.press("y")
+            await pilot.pause()
+
+        self.assertIs(app._bridge_result, True)
+
+    async def test_n_resolves_confirm_false(self):
+        """Pressing 'n' when in confirm mode resolves the bridge with False."""
+        app = await self._app_with_game()
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app.show_confirm_prompt("Re-roll?")
+            await pilot.press("n")
+            await pilot.pause()
+
+        self.assertIs(app._bridge_result, False)
+
+    async def test_keys_ignored_when_bridge_is_idle(self):
+        """Number and letter keys do nothing when no bridge request is active."""
+        app = await self._app_with_game()
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            # _bridge_mode is None — keypresses must not call resolve_bridge()
+            await pilot.press("1")
+            await pilot.press("y")
+            await pilot.press("enter")
+            await pilot.pause()
+
+        self.assertIsNone(app._bridge_result)
+
+
 if __name__ == "__main__":
     unittest.main(buffer=True)
