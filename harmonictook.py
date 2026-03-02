@@ -228,7 +228,16 @@ class Human(Player):
         """Prompt the human (if they own Train Station) to choose 1 or 2 dice; default is 1."""
         if not self.hasTrainStation:
             return 1
-        return self.display.pick_one([1, 2], prompt="Roll how many dice? ")
+        dice_options = [
+            (1, "Roll 1 die"),
+            (2, "Roll 2 dice"),
+        ]
+        choice = self.display.pick_one(
+            dice_options,
+            prompt="Roll how many dice? ",
+            formatter=lambda item: item[1],
+        )
+        return choice[0]
 
     def chooseReroll(self, last_roll: int | None = None) -> bool:
         """Prompt the human to use the Radio Tower re-roll if they own it."""
@@ -265,6 +274,22 @@ class Human(Player):
 
 class Bot(Player):
     """Simple automated player that buys affordable cards at random."""
+
+    # Master list for auto-naming when name is ''; subclasses may override name_options() to extend or replace.
+    NAME_OPTIONS: list[str] = [
+        "R2-D2", "C-3PO", "HAL", "Marvin", "Bender", "WALL-E", "EVE", "Gort",
+        "Robbie", "Number 5", "Ash", "Bishop", "David", "Roy", "T-800", "T-1000",
+        "Johnny 5", "GERTY", "Ava", "Sonny", "Chappie", "Baymax", "BB-8", "K-2SO",
+    ]
+
+    def __init__(self, name: str = "") -> None:
+        super().__init__(name=name)
+        if self.name == "":
+            self.name = random.choice(self.name_options())
+
+    def name_options(self) -> list[str]:
+        """Return the list of names used for auto-naming when name is ''. Subclasses may override to extend or replace."""
+        return list(self.NAME_OPTIONS)
 
     def chooseAction(self, availableCards: Store) -> str:
         """Return 'buy' if any affordable card is available, otherwise 'pass'."""

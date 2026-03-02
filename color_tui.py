@@ -58,6 +58,7 @@ class EventLog(RichLog):
     EventLog {
         height: 6;
         border: solid $primary-darken-1;
+        margin-top: 0;
         padding: 0 1;
     }
     """
@@ -71,6 +72,8 @@ class IOPanel(Static):
         height: 1fr;
         border: solid $warning-darken-1;
         padding: 0 1;
+        overflow-y: auto;
+        overflow-x: hidden;
     }
     """
 
@@ -250,8 +253,10 @@ def _market_markup(game: Game) -> str:
                 f"[{color}]{face_str:>{fw}s}[/{color}] {name_str} {filled}{empty} ${cost:>{cw}d}"
             )
         else:
+            filled = "▓" * qty if qty > 0 else ""
+            empty = "░" * (6 - qty)
             cells.append(
-                f"[dim]{face_str:>{fw}s} {name_str} {'░' * 6} ${cost:>{cw}d}[/dim]"
+                f"[dim]{face_str:>{fw}s} {name_str} {filled}{empty} ${cost:>{cw}d}[/dim]"
             )
 
     blank = " " * _CELL_WIDTH
@@ -336,8 +341,8 @@ class HarmonicTookApp(App):
     TITLE = "Harmonic Took"
     BINDINGS = [("q", "quit", "Quit")]
     CSS = """
-    #player-area { height: 1fr; }
-    #bottom-area { dock: bottom; height: 16; }
+    #player-area { height: 18; }
+    #bottom-area { height: 20; }
     """
 
     def __init__(self, game: Game | None = None,
@@ -351,6 +356,7 @@ class HarmonicTookApp(App):
         self._bridge_options: list = []
         self._key_buffer: str = ""
         self._last_prompt: str = ""
+        self._prompt_formatter: callable = str
         if display is not None:
             display.app = self
 
@@ -424,12 +430,9 @@ class HarmonicTookApp(App):
     def show_prompt(self, options: list, formatter: callable) -> None:
         """Update IOPanel with a numbered choice list and enter pick_one mode."""
         self._bridge_options = list(options)
+        self._prompt_formatter = formatter
         self._bridge_mode = "pick_one"
         self._key_buffer = ""
-        width = len(str(len(options)))
-        self._last_prompt = "\n".join(
-            f"{i + 1:{width}}. {escape(str(formatter(opt)))}" for i, opt in enumerate(options)
-        )
         self._refresh_io_panel()
 
     def show_confirm_prompt(self, prompt: str) -> None:
@@ -443,7 +446,63 @@ class HarmonicTookApp(App):
 
     def _refresh_io_panel(self) -> None:
         """Redraw the IOPanel with cursor first so it is never scrolled off-screen."""
-        self.query_one(IOPanel).update(f"> {self._key_buffer}_\n{self._last_prompt}")
+        if self._bridge_mode == "pick_one":
+            self._last_prompt = self._format_prompt_options(
+                self._bridge_options, self._prompt_formatter
+            )
+        panel = self.query_one(IOPanel)
+        panel.update(f"> {self._key_buffer}_\n{self._last_prompt}")
+        panel.scroll_home(animate=False)
+
+    def _io_content_width(self) -> int:
+        """Return usable content width for IOPanel text (excluding chrome/padding)."""
+        panel = self.query_one(IOPanel)
+        return max(20, panel.size.width - 4)
+
+    def _format_prompt_options(self, options: list, formatter: callable) -> str:
+        """Format options as one or two columns depending on available IOPanel width."""
+        if not options:
+            return ""
+        index_w = len(str(len(options)))
+        labels = [f"{i + 1:{index_w}}. {str(formatter(opt))}" for i, opt in enumerate(options)]
+        max_width = self._io_content_width()
+        return self._arrange_labels(labels, max_width=max_width, max_cols=2)
+
+    @staticmethod
+    def _arrange_labels(labels: list[str], max_width: int, max_cols: int = 2) -> str:
+        """Lay out labels in the widest column count that fits within max_width."""
+        def _truncate(text: str, width: int) -> str:
+            if width <= 0:
+                return ""
+            if len(text) <= width:
+                return text
+            if width <= 3:
+                return text[:width]
+            return text[:width - 3] + "..."
+
+        if not labels:
+            return ""
+        upper_cols = min(max_cols, len(labels))
+        sep = 3
+        for n_cols in range(upper_cols, 0, -1):
+            n_rows = (len(labels) + n_cols - 1) // n_cols
+            per_col_budget = max(8, (max_width - sep * (n_cols - 1)) // n_cols)
+            cols = [
+                [_truncate(cell, per_col_budget) for cell in labels[c * n_rows:(c + 1) * n_rows]]
+                for c in range(n_cols)
+            ]
+            col_widths = [max((len(cell) for cell in col), default=0) for col in cols]
+            if sum(col_widths) + (sep * (n_cols - 1)) > max_width:
+                continue
+            rows: list[str] = []
+            for r in range(n_rows):
+                padded_cells = []
+                for c in range(n_cols):
+                    text = cols[c][r] if r < len(cols[c]) else ""
+                    padded_cells.append(f"{text:<{col_widths[c]}}")
+                rows.append((" " * sep).join(escape(cell) for cell in padded_cells).rstrip())
+            return "\n".join(rows)
+        return "\n".join(escape(_truncate(label, max_width)) for label in labels)
 
     def resolve_bridge(self, value: object) -> None:
         """Resolve the current blocking bridge request and clear the IOPanel."""

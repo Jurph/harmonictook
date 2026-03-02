@@ -420,6 +420,16 @@ class FromageBot(Bot):
     their cap; if everything is at cap, buy anything available.
     """
 
+    # Replace Bot name list with cheese names for auto-naming when name is ''.
+    NAME_OPTIONS: list[str] = [
+        "Brie", "Cheddar", "Gouda", "Mozzarella", "Parmesan", "Camembert",
+        "Roquefort", "Feta", "Gruyère", "Stilton", "Havarti", "Manchego",
+        "Ricotta", "Halloumi", "Emmental", "Comté", "Reblochon", "Taleggio",
+    ]
+
+    def name_options(self) -> list[str]:
+        return list(self.NAME_OPTIONS)
+
     #: (card_name, max_copies): walked in order each turn.
     PRIORITY: list[tuple[str, int]] = [
         # Landmarks — always buy when affordable; they are the win condition.

@@ -635,6 +635,13 @@ class TestFromageBot(unittest.TestCase):
         from bots import FromageBot
         self.assertIsNone(FromageBot(name="F").chooseCard([]))
 
+    def test_empty_name_auto_filled_with_cheese_name(self):
+        """FromageBot(name='') gets a random name from FromageBot.NAME_OPTIONS (cheeses)."""
+        from bots import FromageBot
+        bot = FromageBot(name="")
+        self.assertIn(bot.name, FromageBot.NAME_OPTIONS)
+        self.assertNotEqual(bot.name, "")
+
     def test_count_method(self):
         """_count() returns the number of a named card currently in the deck."""
         from bots import FromageBot

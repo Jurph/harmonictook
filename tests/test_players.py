@@ -26,6 +26,12 @@ class TestPlayerBasics(unittest.TestCase):
         self.assertEqual(self.testbot.name, "Robo0")
         self.assertEqual(self.testbot.bank, 3)
 
+    def test_bot_empty_name_auto_filled_from_name_options(self):
+        """Bot(name='') gets a random name from Bot.NAME_OPTIONS."""
+        bot = Bot(name="")
+        self.assertIn(bot.name, Bot.NAME_OPTIONS)
+        self.assertNotEqual(bot.name, "")
+
     def testPlayerBank(self):
         """Verify deposit adds correctly and deduct never goes below zero."""
         self.assertEqual(self.testbot.bank, 3)
