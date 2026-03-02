@@ -1143,9 +1143,21 @@ def main():
     parser = argparse.ArgumentParser(description='The card game Machi Koro')
     parser.add_argument('--bots', type=int, default=0, metavar='N', help='number of bot players (skips interactive setup)')
     parser.add_argument('--humans', type=int, default=0, metavar='N', help='number of human players (skips interactive setup)')
+    parser.add_argument('--mode', choices=['text', 'color', 'gui'], default='text',
+                        help='display mode: text (default), color (full-screen Textual TUI), gui (not yet supported)')
     args = parser.parse_args()
     game = Game(bots=args.bots, humans=args.humans)
-    game.run(display=PlainTextDisplay())
+    if args.mode == 'color':
+        try:
+            from color_tui import ColorTUIDisplay, HarmonicTookApp  # noqa: PLC0415
+        except ImportError:
+            parser.error("--mode color requires the textual package: pip install textual")
+        ColorTUIDisplay_inst = ColorTUIDisplay()
+        HarmonicTookApp(game=game, display=ColorTUIDisplay_inst).run()
+    elif args.mode == 'gui':
+        parser.error("--mode gui is not yet implemented")
+    else:
+        game.run(display=PlainTextDisplay())
 
 
 if __name__ == "__main__":
