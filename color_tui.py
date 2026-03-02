@@ -139,10 +139,14 @@ def _cards_markup(player: object) -> str:
         reds    = sum(1 for c in cards_on_face if isinstance(c, Red))
         purples = sum(1 for c in cards_on_face if isinstance(c, (Stadium, TVStation, BusinessCenter)))
         parts: list[str] = []
-        if blues:   parts.append(f"[blue]{'█' * blues}[/blue]")
-        if greens:  parts.append(f"[green]{'█' * greens}[/green]")
-        if reds:    parts.append(f"[red]{'█' * reds}[/red]")
-        if purples: parts.append(f"[magenta]{'█' * purples}[/magenta]")
+        if blues:
+            parts.append(f"[blue]{'█' * blues}[/blue]")
+        if greens:
+            parts.append(f"[green]{'█' * greens}[/green]")
+        if reds:
+            parts.append(f"[red]{'█' * reds}[/red]")
+        if purples:
+            parts.append(f"[magenta]{'█' * purples}[/magenta]")
         coverage = " ".join(parts) if parts else "·"
         lines.append(f"{face:2d}│{coverage}")
     return "\n".join(lines)
@@ -226,10 +230,14 @@ def _market_markup(game: Game) -> str:
         cost = card.cost  # type: ignore[attr-defined]
         affordable = player.bank >= cost  # type: ignore[attr-defined]
 
-        if isinstance(card, Blue):    color = "blue"
-        elif isinstance(card, Green): color = "green"
-        elif isinstance(card, Red):   color = "red"
-        else:                         color = "magenta"
+        if isinstance(card, Blue):
+            color = "blue"
+        elif isinstance(card, Green):
+            color = "green"
+        elif isinstance(card, Red):
+            color = "red"
+        else:
+            color = "magenta"
 
         name_str = f"{name[:nw]:<{nw}s}"
 
