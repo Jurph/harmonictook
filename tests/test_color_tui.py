@@ -4,7 +4,7 @@
 
 import threading
 import unittest
-from harmonictook import Display, Event, Game, UpgradeCard
+from harmonictook import Display, Event, Game
 
 
 class TestColorTUIDisplaySkeleton(unittest.TestCase):
@@ -545,6 +545,11 @@ class TestHumanKeyHandling(unittest.IsolatedAsyncioTestCase):
         # No display= arg → on_mount() skips the worker thread
         return HarmonicTookApp(game=Game(players=2))
 
+    def _io_panel_content(self, app: object) -> str:
+        from color_tui import IOPanel  # noqa: PLC0415
+        panel = app.query_one(IOPanel)  # type: ignore[attr-defined]
+        return str(getattr(panel, "_Static__content", ""))
+
     async def test_number_and_enter_resolve_pick_one(self):
         """Typing a digit and pressing Enter resolves pick_one with the matching option."""
         app = await self._app_with_game()
@@ -641,6 +646,82 @@ class TestHumanKeyHandling(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
 
         self.assertIsNone(app._bridge_result)
+
+    async def test_enter_with_empty_buffer_does_nothing(self):
+        """Pressing Enter before typing any digits does not resolve the bridge."""
+        app = await self._app_with_game()
+        options = ["A", "B", "C"]
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app.show_prompt(options, str)
+            await pilot.press("enter")   # buffer is "" → int("") raises ValueError
+            await pilot.pause()
+
+        self.assertIsNone(app._bridge_result)
+
+    async def test_backspace_on_empty_buffer_is_safe(self):
+        """Backspace when the buffer is already empty does not raise or leave stale state."""
+        app = await self._app_with_game()
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app.show_prompt(["A", "B"], str)
+            await pilot.press("backspace")
+            await pilot.press("backspace")
+            await pilot.pause()
+
+        self.assertIsNone(app._bridge_result)
+        self.assertEqual(app._key_buffer, "")
+
+    async def test_io_panel_shows_options_after_show_prompt(self):
+        """IOPanel content includes numbered option labels after show_prompt()."""
+        app = await self._app_with_game()
+        options = ["Buy Ranch", "Pass", "Show cards"]
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app.show_prompt(options, str)
+            await pilot.pause()
+            content = self._io_panel_content(app)
+
+        for i, opt in enumerate(options, 1):
+            self.assertIn(f"[{i}]", content)
+            self.assertIn(opt, content)
+
+    async def test_io_panel_shows_buffer_as_user_types(self):
+        """IOPanel reflects the accumulated digit buffer after each keypress."""
+        app = await self._app_with_game()
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app.show_prompt(["A", "B", "C", "D", "E",
+                             "F", "G", "H", "I", "J", "K"], str)  # 11 options → 2-digit cap
+            await pilot.press("1")
+            await pilot.pause()
+            after_one = self._io_panel_content(app)
+            await pilot.press("1")
+            await pilot.pause()
+            after_two = self._io_panel_content(app)
+
+        self.assertIn("1", after_one)    # buffer shows "1" after first digit
+        self.assertIn("11", after_two)   # buffer shows "11" after second digit
+
+    async def test_extra_digits_rejected_after_cap(self):
+        """Once the buffer hits its digit cap, further digits are ignored."""
+        app = await self._app_with_game()
+        options = ["A", "B", "C"]   # 3 options → max 1 digit
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app.show_prompt(options, str)
+            await pilot.press("1")   # accepted
+            await pilot.press("2")   # rejected — already at 1-digit cap
+            await pilot.press("enter")
+            await pilot.pause()
+
+        # Buffer held "1" (not "12"), so option index 0 = "A"
+        self.assertEqual(app._bridge_result, "A")
 
 
 if __name__ == "__main__":

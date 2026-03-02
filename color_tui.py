@@ -465,8 +465,12 @@ class HarmonicTookApp(App):
                     self._key_buffer = ""
                     self.resolve_bridge(self._bridge_options[idx])
             elif event.character is not None and event.character.isdigit():
-                self._key_buffer += event.character
-                self._refresh_io_panel()
+                # Cap buffer at the number of digits needed to express the
+                # highest valid index (e.g. 9 options → 1 digit; 10 → 2 digits).
+                max_digits = len(str(len(self._bridge_options)))
+                if len(self._key_buffer) < max_digits:
+                    self._key_buffer += event.character
+                    self._refresh_io_panel()
                 event.stop()
 
 
