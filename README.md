@@ -16,7 +16,9 @@
 [![CircleCI Badge](https://circleci.com/gh/Jurph/harmonictook.svg?style=shield&circletoken=865dd863ff6582b56c01424e84fdeedfbc0e0d8e)](https://app.circleci.com/pipelines/github/Jurph/harmonictook)
 [![codecov](https://codecov.io/gh/Jurph/harmonictook/branch/main/graph/badge.svg)](https://codecov.io/gh/Jurph/harmonictook)
 
-# Latest: v0.9.2 Released
+# Latest: v0.9.2 Released 
+
+The game runs in native python (3.7 and newer) with no installation required for plain monochrome text mode. Type `harmonictook.py` to run the game in a terminal window. You can also run `tournament.py` to test new bot strategies against each other, including a `--swiss` CLI flag that runs a seeded Swiss tournament to really find out which bot strategy is best. The game also includes a more colorful terminal version available with `harmonictook.py --mode color` that requires a few imports first (see **Installation** below). 
 
 ## Installation
 
@@ -26,7 +28,7 @@ The core game requires only the Python standard library. Clone the repo and run:
 python harmonictook.py
 ```
 
-For a reproducible environment (recommended), use [`uv`](https://docs.astral.sh/uv/):
+For color terminal (and in the future, GUI) versions, you will need to install some dependencies. To avoid cluttering up your core Python install, I recommend establishing a virtual environment. You can do this with `conda`, `venv`, or (my preference) [`uv`](https://docs.astral.sh/uv/). Instructions for `uv` are below. 
 
 ```sh
 uv venv                        # create .venv/
@@ -45,10 +47,7 @@ python harmonictook.py                   # plain-text mode (no extra deps)
 python harmonictook.py --mode color      # full-screen Textual TUI
 ```
 
-> **Note:** `--mode color` requires `textual`, which is included in `requirements.txt`.
-> If you only want the core game, skip `requirements.txt` entirely — no third-party packages needed.
-
-You can also run `tournament.py` to test new bot strategies against each other, including a `--swiss` CLI flag that runs a seeded Swiss tournament to really find out which bot strategy is best.
+Currently there is no GUI, so `--mode gui` is stubbed out in the code, but unsupported. 
 
 # Current features 
 
@@ -81,11 +80,9 @@ Machi Koro -- I mean, uh, _harmonictook_ -- has a lot of luck involved. Even the
 
 - Gameplay 
   - Consider limited-market variant where only 8 or 10 unique cards are available (until a pile is depleted)
-
-
-
-
-
+  - Cheat codes (?!) 
+  - Persistent local high scores and Elo 
+  - Allow humans to compete in Tournament Mode 
 
 # The Rules
 

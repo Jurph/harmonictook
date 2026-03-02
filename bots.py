@@ -422,9 +422,8 @@ class FromageBot(Bot):
 
     # Replace Bot name list with cheese names for auto-naming when name is ''.
     NAME_OPTIONS: list[str] = [
-        "Brie", "Cheddar", "Gouda", "Mozzarella", "Parmesan", "Camembert",
-        "Roquefort", "Feta", "Gruyère", "Stilton", "Havarti", "Manchego",
-        "Ricotta", "Halloumi", "Emmental", "Comté", "Reblochon", "Taleggio",
+        "Brie", "Cheddar", "Roquefort", "Stilton", "Havarti", "Manchego",
+        "Halloumi", "Emmental", "Reblochon", "Taleggio",
     ]
 
     def name_options(self) -> list[str]:

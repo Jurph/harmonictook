@@ -277,9 +277,8 @@ class Bot(Player):
 
     # Master list for auto-naming when name is ''; subclasses may override name_options() to extend or replace.
     NAME_OPTIONS: list[str] = [
-        "R2-D2", "C-3PO", "HAL", "Marvin", "Bender", "WALL-E", "EVE", "Gort",
-        "Robbie", "Number 5", "Ash", "Bishop", "David", "Roy", "T-800", "T-1000",
-        "Johnny 5", "GERTY", "Ava", "Sonny", "Chappie", "Baymax", "BB-8", "K-2SO",
+        "Marvin", "Bender", "Gort", "Robbie", "Ash", "Bishop", "David", "Roy", "Pris",
+        "Ava", "Sonny", "Chappie", "Baymax", "Sharon", "D'Anna", "Tory", "Ellen", "Leoben", "Simon", "Cavil", "Galen",
     ]
 
     def __init__(self, name: str = "") -> None:
