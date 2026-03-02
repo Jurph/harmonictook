@@ -41,8 +41,9 @@ class PlayerPanel(Static):
     DEFAULT_CSS = """
     PlayerPanel {
         width: 1fr;
+        height: 100%;
         border: solid grey;
-        padding: 1 1;
+        padding: 0 1;
     }
     PlayerPanel.active {
         border: solid white;
@@ -335,7 +336,6 @@ class HarmonicTookApp(App):
     TITLE = "Harmonic Took"
     BINDINGS = [("q", "quit", "Quit")]
     CSS = """
-    #top-area    { height: 1fr; }
     #player-area { height: 1fr; }
     #bottom-area { dock: bottom; height: 16; }
     """
@@ -355,22 +355,21 @@ class HarmonicTookApp(App):
             display.app = self
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="top-area"):
-            yield MarketPanel(_PLACEHOLDER_MARKET if self.game is None else "", id="market")
-            with Horizontal(id="player-area"):
-                if self.game is None:
-                    for name, coins, cards, landmarks, active in _PLACEHOLDER_PLAYERS:
-                        yield PlayerPanel(
-                            _player_markup(name, coins, cards, landmarks, active),
-                            classes="active" if active else "inactive",
-                        )
-                else:
-                    active_player = self.game.get_current_player()
-                    for player in self.game.players:
-                        yield PlayerPanel(
-                            "",
-                            classes="active" if player is active_player else "inactive",
-                        )
+        yield MarketPanel(_PLACEHOLDER_MARKET if self.game is None else "", id="market")
+        with Horizontal(id="player-area"):
+            if self.game is None:
+                for name, coins, cards, landmarks, active in _PLACEHOLDER_PLAYERS:
+                    yield PlayerPanel(
+                        _player_markup(name, coins, cards, landmarks, active),
+                        classes="active" if active else "inactive",
+                    )
+            else:
+                active_player = self.game.get_current_player()
+                for player in self.game.players:
+                    yield PlayerPanel(
+                        "",
+                        classes="active" if player is active_player else "inactive",
+                    )
         with Vertical(id="bottom-area"):
             yield EventLog(id="event-log")
             yield IOPanel(_PLACEHOLDER_IO if self.game is None else "", id="io-panel")
@@ -443,8 +442,8 @@ class HarmonicTookApp(App):
         self.query_one(EventLog).write(content)
 
     def _refresh_io_panel(self) -> None:
-        """Redraw the IOPanel with the current prompt and key-buffer cursor."""
-        self.query_one(IOPanel).update(f"{self._last_prompt}\n> {self._key_buffer}_")
+        """Redraw the IOPanel with cursor first so it is never scrolled off-screen."""
+        self.query_one(IOPanel).update(f"> {self._key_buffer}_\n{self._last_prompt}")
 
     def resolve_bridge(self, value: object) -> None:
         """Resolve the current blocking bridge request and clear the IOPanel."""
