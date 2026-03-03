@@ -279,6 +279,7 @@ class Bot(Player):
     NAME_OPTIONS: list[str] = [
         "Marvin", "Bender", "Gort", "Robbie", "Ash", "Bishop", "David", "Roy", "Pris",
         "Ava", "Sonny", "Chappie", "Baymax", "Sharon", "D'Anna", "Tory", "Ellen", "Leoben", "Simon", "Cavil", "Galen",
+        "Dolores", "Bernard", "Maeve", "Charlotte", "Rachael", "Leon", "Zhora", 
     ]
 
     def __init__(self, name: str = "") -> None:

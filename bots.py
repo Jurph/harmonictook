@@ -304,7 +304,21 @@ class ImpatientBot(Bot):
     chooseCard and chooseBusinessCenterSwap use game.players when available.
     """
 
+    # Replace Bot name list with cheese names for auto-naming when name is ''.
+    NAME_OPTIONS: list[str] = [
+        "T2", "T-1000", "ED-209", "IG-88", "SHODAN", "WOPR", "HAL 9000", "Mother", "Colossus",
+    ]
+
+    def name_options(self) -> list[str]:
+        return list(self.NAME_OPTIONS)
+    
+    def __init__(self, name: str = "") -> None:
+        super().__init__(name=name)
+        if self.name == "":
+            self.name = random.choice(self.name_options())
+
     # ------------------------------------------------------------------
+    #
     # Public decision methods
     # ------------------------------------------------------------------
 

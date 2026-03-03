@@ -459,14 +459,22 @@ class HarmonicTookApp(App):
         panel = self.query_one(IOPanel)
         return max(20, panel.size.width - 4)
 
+    def _io_content_height(self) -> int:
+        """Return number of lines available for the option list (excluding the '> _' input line)."""
+        panel = self.query_one(IOPanel)
+        return max(1, panel.size.height - 1)
+
     def _format_prompt_options(self, options: list, formatter: callable) -> str:
-        """Format options as one or two columns depending on available IOPanel width."""
+        """Format options in one column, or two columns only when the list would overflow."""
         if not options:
             return ""
         index_w = len(str(len(options)))
         labels = [f"{i + 1:{index_w}}. {str(formatter(opt))}" for i, opt in enumerate(options)]
         max_width = self._io_content_width()
-        return self._arrange_labels(labels, max_width=max_width, max_cols=2)
+        max_lines = self._io_content_height()
+        # Use two columns only when single column would exceed the panel height.
+        max_cols = 2 if len(labels) > max_lines else 1
+        return self._arrange_labels(labels, max_width=max_width, max_cols=max_cols)
 
     @staticmethod
     def _arrange_labels(labels: list[str], max_width: int, max_cols: int = 2) -> str:
