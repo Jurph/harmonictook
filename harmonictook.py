@@ -1131,6 +1131,7 @@ class Game:
         # Post-trigger bank status: show updated coins before the buy decision
         for person in self.players:
             emit(Event(type="bank_status", player=person.name, value=person.bank))
+        display.show_state(self)
 
         action = player.chooseAction(self.market)
         if action == 'buy':

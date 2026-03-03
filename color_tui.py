@@ -314,7 +314,7 @@ def _event_to_str(event: Event) -> str | None:  # noqa: C901
     if t == "bc_skip":
         return "Business Center doesn't activate (not die roller's turn)."
     if t == "bank_status":
-        return f"{event.player} now has {event.value} coins."
+        return None  # panel shows coin totals visually; log entry is redundant noise
     if t == "deck_state":
         return None  # panel shows deck state visually; no log entry needed
     if t == "buy":
