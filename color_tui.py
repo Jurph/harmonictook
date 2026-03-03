@@ -56,7 +56,8 @@ class EventLog(RichLog):
 
     DEFAULT_CSS = """
     EventLog {
-        height: 7;
+        height: 1fr;
+        max-height: 7;
         border: solid $primary-darken-1;
         margin-top: 0;
         padding: 0 1;
@@ -69,7 +70,7 @@ class IOPanel(Static):
 
     DEFAULT_CSS = """
     IOPanel {
-        height: 3fr;
+        height: 2fr;
         border: solid $warning-darken-1;
         padding: 0 1;
         overflow-y: auto;
@@ -342,9 +343,9 @@ class HarmonicTookApp(App):
     TITLE = "Harmonic Took"
     BINDINGS = [("q", "quit", "Quit")]
     CSS = """
-    #main { height: 1fr; }
+    #main { height: auto; }
     #player-area { height: 18; }
-    #bottom-area { dock: bottom; height: 20; }
+    #bottom-area { height: 1fr; }
     """
 
     def __init__(self, game: Game | None = None,
