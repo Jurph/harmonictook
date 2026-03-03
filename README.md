@@ -20,6 +20,8 @@
 
 The game runs in native python (3.7 and newer) with no installation required for plain monochrome text mode. Type `harmonictook.py` to run the game in a terminal window. You can also run `tournament.py` to test new bot strategies against each other, including a `--swiss` CLI flag that runs a seeded Swiss tournament to really find out which bot strategy is best. The game also includes a more colorful terminal version available with `harmonictook.py --mode color` that requires a few imports first (see **Installation** below). 
 
+![Screenshot of v0.9.2 gameplay](docs/gameplay.PNG)
+
 ## Installation
 
 The core game requires only the Python standard library. Clone the repo and run:
@@ -59,13 +61,13 @@ All of the cards work correctly, including the logic from the Business Center (c
 
 **Lots of personalities.** Opponents now feature seven personas who play the game differently: 
 
-    - **Random** chooses entirely randomly, unless it has enough to buy a landmark (TRIVIAL)
-    - **Thoughtful** follows a hard-coded list of priorities (EASY)
-    - **Coverage** seeks to minimize the number of dice rolls that don't generate any income (MEDIUM)
-    - **EVie** tries to maximize expected value in the short run (MEDIUM)
-    - **Marathon** tries to predict the turn you'll win, and paces itself to win one turn sooner (MEDIUM)
-    - **Fromage** attempts to rapidly assemble the Ranch+Cheese engine (HARD)
-    - **Impatient** attempts to find the fastest path to victory (HARD)
+  - **Random** chooses entirely randomly, unless it has enough to buy a landmark (TRIVIAL)
+  - **Thoughtful** follows a hard-coded list of priorities (EASY)
+  - **Coverage** seeks to minimize the number of dice rolls that don't generate any income (MEDIUM)
+  - **EVie** tries to maximize expected value in the short run (MEDIUM)
+  - **Marathon** tries to predict the turn you'll win, and paces itself to win one turn sooner (MEDIUM)
+  - **Fromage** attempts to rapidly assemble the Ranch+Cheese engine (HARD)
+  - **Impatient** attempts to find the fastest path to victory (HARD)
 
 Machi Koro -- I mean, uh, _harmonictook_ -- has a lot of luck involved. Even the hardest bots can be beaten with decent strategy and hot dice! 
 
