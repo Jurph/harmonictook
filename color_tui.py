@@ -106,7 +106,7 @@ _PLACEHOLDER_PLAYERS = [
     ("Alice", 12,
      " 1│[blue]█[/blue]\n 2│[blue]█[/blue] [green]██[/green]\n 3│[green]██[/green]\n"
      " 4│·\n 5│·\n 6│[magenta]█[/magenta]\n 7│·\n 8│·\n 9│·\n10│·\n11│·\n12│·",
-     "[dark_orange]●[/dark_orange] [dim]○[/dim] [dim]○[/dim] [dim]○[/dim]", True),
+     "[#FF8700]●[/#FF8700] [dim]○[/dim] [dim]○[/dim] [dim]○[/dim]", True),
     ("Bob",    5,
      " 1│[blue]█[/blue]\n 2│[green]█[/green]\n 3│[green]█[/green]\n"
      " 4│·\n 5│·\n 6│·\n 7│·\n 8│·\n 9│·\n10│·\n11│·\n12│·",
@@ -165,7 +165,7 @@ def _landmarks_markup(player: object) -> str:
         player.hasAmusementPark,   # type: ignore[attr-defined]
         player.hasRadioTower,      # type: ignore[attr-defined]
     ]
-    return " ".join("[dark_orange]●[/dark_orange]" if f else "[dim]○[/dim]" for f in flags)
+    return " ".join("[#FF8700]●[/#FF8700]" if f else "[dim]○[/dim]" for f in flags)
 
 
 def _market_markup(game: Game) -> str:
