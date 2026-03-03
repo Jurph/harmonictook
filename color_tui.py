@@ -56,7 +56,7 @@ class EventLog(RichLog):
 
     DEFAULT_CSS = """
     EventLog {
-        height: 6;
+        height: 1fr;
         border: solid $primary-darken-1;
         margin-top: 0;
         padding: 0 1;
@@ -69,7 +69,7 @@ class IOPanel(Static):
 
     DEFAULT_CSS = """
     IOPanel {
-        height: 1fr;
+        height: 3fr;
         border: solid $warning-darken-1;
         padding: 0 1;
         overflow-y: auto;
@@ -287,7 +287,8 @@ def _event_to_str(event: Event) -> str | None:  # noqa: C901
     if t == "payout_skip":
         return f"{event.player} didn't roll the dice — no payout from {event.card}."
     if t == "factory_count":
-        return f"{event.player} has {event.value} cards of type {event.card_type}..."
+        cat = Green._category_names.get(event.card_type, str(event.card_type))
+        return f"{event.player} has {event.value} {cat} cards..."
     if t == "steal":
         return f"{event.player} collected {event.value} coins from {event.target}."
     if t == "steal_activate":
@@ -341,8 +342,9 @@ class HarmonicTookApp(App):
     TITLE = "Harmonic Took"
     BINDINGS = [("q", "quit", "Quit")]
     CSS = """
+    #main { height: 1fr; }
     #player-area { height: 18; }
-    #bottom-area { height: 20; }
+    #bottom-area { dock: bottom; height: 20; }
     """
 
     def __init__(self, game: Game | None = None,
@@ -357,25 +359,27 @@ class HarmonicTookApp(App):
         self._key_buffer: str = ""
         self._last_prompt: str = ""
         self._prompt_formatter: callable = str
+        self.new_match_requested: bool = False
         if display is not None:
             display.app = self
 
     def compose(self) -> ComposeResult:
-        yield MarketPanel(_PLACEHOLDER_MARKET if self.game is None else "", id="market")
-        with Horizontal(id="player-area"):
-            if self.game is None:
-                for name, coins, cards, landmarks, active in _PLACEHOLDER_PLAYERS:
-                    yield PlayerPanel(
-                        _player_markup(name, coins, cards, landmarks, active),
-                        classes="active" if active else "inactive",
-                    )
-            else:
-                active_player = self.game.get_current_player()
-                for player in self.game.players:
-                    yield PlayerPanel(
-                        "",
-                        classes="active" if player is active_player else "inactive",
-                    )
+        with Vertical(id="main"):
+            yield MarketPanel(_PLACEHOLDER_MARKET if self.game is None else "", id="market")
+            with Horizontal(id="player-area"):
+                if self.game is None:
+                    for name, coins, cards, landmarks, active in _PLACEHOLDER_PLAYERS:
+                        yield PlayerPanel(
+                            _player_markup(name, coins, cards, landmarks, active),
+                            classes="active" if active else "inactive",
+                        )
+                else:
+                    active_player = self.game.get_current_player()
+                    for player in self.game.players:
+                        yield PlayerPanel(
+                            "",
+                            classes="active" if player is active_player else "inactive",
+                        )
         with Vertical(id="bottom-area"):
             yield EventLog(id="event-log")
             yield IOPanel(_PLACEHOLDER_IO if self.game is None else "", id="io-panel")
@@ -418,12 +422,26 @@ class HarmonicTookApp(App):
     def _game_worker(self) -> None:
         """Run the game loop in a background thread.
 
-        Exceptions are swallowed silently: the app may exit (e.g., test teardown)
-        while a turn is in progress, causing call_from_thread() to re-raise a
-        widget-not-found error.
+        After each game, shows a post-game menu. Rematch resets and replays;
+        New Match / Quit set new_match_requested and exit the Textual app.
+        Exceptions are swallowed silently: the app may exit during test teardown
+        while a turn is in progress, causing call_from_thread() to raise.
         """
+        _MENU = ["Rematch", "New Match", "Quit"]
         try:
-            self.game.run(display=self._game_display)  # type: ignore[arg-type]
+            while True:
+                self.game.run(display=self._game_display)  # type: ignore[arg-type]
+                choice = self._game_display.pick_one(  # type: ignore[union-attr]
+                    _MENU, prompt="Play again? "
+                )
+                if choice == "Rematch":
+                    self.game.reset()
+                    self.call_from_thread(self.query_one(EventLog).clear)
+                    self.call_from_thread(self.update_state, self.game)
+                else:
+                    self.new_match_requested = (choice == "New Match")
+                    self.call_from_thread(self.action_quit)
+                    return
         except Exception:  # noqa: BLE001
             pass
 
@@ -438,7 +456,7 @@ class HarmonicTookApp(App):
     def show_confirm_prompt(self, prompt: str) -> None:
         """Update IOPanel with a yes/no prompt and enter confirm mode."""
         self._bridge_mode = "confirm"
-        self.query_one(IOPanel).update(escape(prompt))
+        self.query_one(IOPanel).update(prompt.replace("[", "\\["))
 
     def show_info_text(self, content: str) -> None:
         """Write informational content to the EventLog."""

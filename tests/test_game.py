@@ -95,9 +95,10 @@ class TestRefreshMarket(unittest.TestCase):
 class TestMain(unittest.TestCase):
     """Tests for the main() entry point."""
 
+    @patch('builtins.input', return_value='3')   # '3' → "Quit" in post-game menu
     @patch('builtins.print')
-    def testMainCreatesGameAndRuns(self, mock_print):
-        """Verify main() constructs a Game and calls run() exactly once."""
+    def testMainCreatesGameAndRuns(self, mock_print, mock_input):
+        """Verify main() constructs a Game, runs it, then exits on Quit."""
         import harmonictook
         mock_game = MagicMock()
         with patch('harmonictook.Game', return_value=mock_game) as mock_game_cls:
@@ -106,8 +107,9 @@ class TestMain(unittest.TestCase):
         mock_game_cls.assert_called_once_with(bots=2, humans=0)
         mock_game.run.assert_called_once()
 
+    @patch('builtins.input', return_value='3')   # '3' → "Quit" in post-game menu
     @patch('builtins.print')
-    def testMainDefaultArgs(self, mock_print):
+    def testMainDefaultArgs(self, mock_print, mock_input):
         """Verify main() with no flags calls Game(bots=0, humans=0) and run()."""
         import harmonictook
         mock_game = MagicMock()

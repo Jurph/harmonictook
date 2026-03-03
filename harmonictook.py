@@ -71,6 +71,16 @@ class Player(object):
         self.hasAmusementPark = False
         self.hasRadioTower = False
 
+    def reset(self) -> None:
+        """Reinitialize this player for a fresh game; preserves name, type, and display."""
+        self.bank = 3
+        self.deck = PlayerDeck(self)
+        self.hasTrainStation = False
+        self.hasShoppingMall = False
+        self.hasAmusementPark = False
+        self.hasRadioTower = False
+        self.isrollingdice = False
+
     def isWinner(self) -> bool:
         """Return True if the player holds all four upgrade cards."""
         return self.hasAmusementPark and self.hasRadioTower and self.hasShoppingMall and self.hasTrainStation
@@ -880,7 +890,8 @@ class PlainTextDisplay(Display):
         elif t == "payout_skip":
             print(f"{event.player} didn't roll the dice - no payout from {event.card}.")
         elif t == "factory_count":
-            print(f"{event.player} has {event.value} cards of type {event.card_type}...")
+            cat = Green._category_names.get(event.card_type, str(event.card_type))
+            print(f"{event.player} has {event.value} {cat} cards...")
         elif t == "steal":
             print(f"{event.player} collected {event.value} coins from {event.target}.")
         elif t == "steal_activate":
@@ -1038,6 +1049,18 @@ class Game:
             counts[card.name] = counts.get(card.name, 0) + 1
         return counts
 
+    def reset(self) -> None:
+        """Reset all game state for a rematch; preserves player list (same types, same names)."""
+        for player in self.players:
+            player.reset()
+        self.market = TableDeck()
+        self.reserve = UniqueDeck(self.players)
+        self.current_player_index = 0
+        self.turn_number = 0
+        self.last_roll = None
+        self.winner = None
+        self.history = []
+
     def refresh_market(self) -> None:
         """Sync unique cards between reserve and market based on the current player's holdings."""
         player = self.get_current_player()
@@ -1075,6 +1098,7 @@ class Game:
         player.isrollingdice = True
 
         self.refresh_market()
+        display.show_state(self)
 
         # Pre-turn status: show coins and deck before any prompts fire
         for person in self.players:
@@ -1172,18 +1196,33 @@ def main():
     parser.add_argument('--mode', choices=['text', 'color', 'gui'], default='text',
                         help='display mode: text (default), color (full-screen Textual TUI), gui (not yet supported)')
     args = parser.parse_args()
-    game = Game(bots=args.bots, humans=args.humans)
     if args.mode == 'color':
         try:
             from color_tui import ColorTUIDisplay, HarmonicTookApp  # noqa: PLC0415
         except ImportError:
             parser.error("--mode color requires the textual package: pip install textual")
-        ColorTUIDisplay_inst = ColorTUIDisplay()
-        HarmonicTookApp(game=game, display=ColorTUIDisplay_inst).run()
+        while True:
+            game = Game(bots=args.bots, humans=args.humans)
+            display = ColorTUIDisplay()
+            app = HarmonicTookApp(game=game, display=display)
+            app.run()
+            if not getattr(app, 'new_match_requested', False):
+                break
     elif args.mode == 'gui':
         parser.error("--mode gui is not yet implemented")
     else:
-        game.run(display=PlainTextDisplay())
+        _MENU = ["New Match", "Rematch", "Quit"]
+        display = PlainTextDisplay()
+        game = Game(bots=args.bots, humans=args.humans)
+        while True:
+            game.run(display=display)
+            choice = display.pick_one(_MENU, prompt="Play again? ")
+            if choice == "Quit":
+                break
+            elif choice == "Rematch":
+                game.reset()
+            else:  # New Match
+                game = Game(bots=args.bots, humans=args.humans)
 
 
 if __name__ == "__main__":

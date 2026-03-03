@@ -113,5 +113,83 @@ class TestGameFlow(unittest.TestCase):
         self.assertIs(self.game.winner, player)
 
 
+class TestReset(unittest.TestCase):
+    """Player.reset() and Game.reset() restore starting state for a rematch."""
+
+    def setUp(self):
+        self.game = Game(players=2)
+
+    def test_player_reset_restores_bank(self):
+        """reset() brings the player back to 3 coins regardless of how many they had."""
+        player = self.game.players[0]
+        player.deposit(50)
+        player.reset()
+        self.assertEqual(player.bank, 3)
+
+    def test_player_reset_restores_starting_deck(self):
+        """reset() gives the player a fresh Wheat Field + Bakery deck."""
+        player = self.game.players[0]
+        player.deposit(100)
+        player.buy("Ranch", self.game.market)
+        player.buy("Forest", self.game.market)
+        player.reset()
+        names = [c.name for c in player.deck.deck]
+        self.assertCountEqual(names, ["Wheat Field", "Bakery"])
+
+    def test_player_reset_clears_landmarks(self):
+        """reset() removes all four landmarks."""
+        player = self.game.players[0]
+        player.hasTrainStation = True
+        player.hasShoppingMall = True
+        player.hasAmusementPark = True
+        player.hasRadioTower = True
+        player.reset()
+        self.assertFalse(player.hasTrainStation)
+        self.assertFalse(player.hasShoppingMall)
+        self.assertFalse(player.hasAmusementPark)
+        self.assertFalse(player.hasRadioTower)
+
+    def test_player_reset_preserves_name(self):
+        """reset() does not change the player's name."""
+        player = self.game.players[0]
+        original_name = player.name
+        player.reset()
+        self.assertEqual(player.name, original_name)
+
+    def test_game_reset_restores_all_players(self):
+        """Game.reset() restores every player to starting bank and deck."""
+        for p in self.game.players:
+            p.deposit(50)
+        self.game.reset()
+        for p in self.game.players:
+            self.assertEqual(p.bank, 3)
+            self.assertEqual(len(p.deck.deck), 2)
+
+    def test_game_reset_preserves_player_list(self):
+        """Game.reset() keeps the same player objects in the same order."""
+        original_players = list(self.game.players)
+        self.game.reset()
+        self.assertEqual(self.game.players, original_players)
+
+    def test_game_reset_clears_turn_counters(self):
+        """Game.reset() zeroes turn_number and clears winner."""
+        self.game.turn_number = 17
+        self.game.winner = self.game.players[0]
+        self.game.reset()
+        self.assertEqual(self.game.turn_number, 0)
+        self.assertIsNone(self.game.winner)
+
+    def test_game_reset_restores_market(self):
+        """Game.reset() gives a fresh market with six copies of each card type."""
+        # Drain Wheat Fields from the market
+        player = self.game.players[0]
+        player.deposit(100)
+        for _ in range(6):
+            player.buy("Wheat Field", self.game.market)
+        self.game.reset()
+        market = self.game.get_market_state()
+        self.assertEqual(market.get("Wheat Field", 0), 6)
+
+
 if __name__ == "__main__":
     unittest.main(buffer=True)
