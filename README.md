@@ -16,7 +16,7 @@
 [![CircleCI Badge](https://circleci.com/gh/Jurph/harmonictook.svg?style=shield&circletoken=865dd863ff6582b56c01424e84fdeedfbc0e0d8e)](https://app.circleci.com/pipelines/github/Jurph/harmonictook)
 [![codecov](https://codecov.io/gh/Jurph/harmonictook/branch/main/graph/badge.svg)](https://codecov.io/gh/Jurph/harmonictook)
 
-# Latest: v0.9.2 Released 
+# Latest: v1.0.0 Released 
 
 The game runs in native python (3.7 and newer) with no installation required for plain monochrome text mode. Type `harmonictook.py` to run the game in a terminal window. You can also run `tournament.py` to test new bot strategies against each other, including a `--swiss` CLI flag that runs a seeded Swiss tournament to really find out which bot strategy is best. The game also includes a more colorful terminal version available with `harmonictook.py --mode color` that requires a few imports first (see **Installation** below). 
 
@@ -31,7 +31,7 @@ The core game requires only the Python standard library. Clone the repo and run:
 python harmonictook.py
 ```
 
-For color terminal (and in the future, GUI) versions, you will need to install some dependencies. To avoid cluttering up your core Python install, I recommend establishing a virtual environment. You can do this with `conda`, `venv`, or (my preference) [`uv`](https://docs.astral.sh/uv/). Instructions for `uv` are below. 
+For color terminal (and in the future, GUI) versions, you will need to install some dependencies. To avoid cluttering up your core Python install, I recommend using a virtual environment. You can do this with `conda`, `venv`, or (my preference) [`uv`](https://docs.astral.sh/uv/). Instructions for `uv` are below. 
 
 ```sh
 uv venv                        # create .venv/
@@ -56,13 +56,13 @@ Currently there is no GUI, so `--mode gui` is stubbed out in the code, but unsup
 
 ## Base Game 
 
-All of the cards work correctly, including the logic from the Business Center (card-swapping), extra turns for doubles, and re-rolling dice with the Radio Tower. Support for 2, 3, or 4 players. Hot-seat multi-player for any of the humans, and any or all players can also be bots. The human running the program gets to decide who sits where at the table. 
+All of the cards work correctly, including the logic from the Business Center (card-swapping), extra turns for doubles, and re-rolling dice with the Radio Tower. Support for 2, 3, or 4 players. Hot-seat multi-player for any of the humans, and any or all players can also be bots. The human running the program gets to decide who sits where at the table, so you can handicap yourself or the hardest opponents by moving them earlier or later in the turn order. 
 
 ## Pretty Good Computer Opponents! 
 
 **Lots of personalities.** Opponents now feature seven personas who play the game differently: 
 
-  - **Random** chooses entirely randomly, unless it has enough to buy a landmark (TRIVIAL)
+  - **Random** chooses entirely randomly, unless it has enough to buy a landmark (EASY/TRIVIAL)
   - **Thoughtful** follows a hard-coded list of priorities (EASY)
   - **Coverage** seeks to minimize the number of dice rolls that don't generate any income (MEDIUM)
   - **EVie** tries to maximize expected value in the short run (MEDIUM)
@@ -70,9 +70,11 @@ All of the cards work correctly, including the logic from the Business Center (c
   - **Fromage** attempts to rapidly assemble the Ranch+Cheese engine (HARD)
   - **Impatient** attempts to find the fastest path to victory (HARD)
 
-Machi Koro -- I mean, uh, _harmonictook_ -- has a lot of luck involved. Even the hardest bots can be beaten with decent strategy and hot dice! 
+Harmonictook has a lot of luck involved. Even the hardest bots can be beaten with decent strategy and hot dice! 
 
 **An arena where you can grow your own bots.** These bots were built by analyzing the results of `tournament.py`, which pits computer opponents against one another in a multi-day Swiss-style tournament. In the default, a field of bots divisible by 12 square off in random pairs, then seeded pairs, then triples, then staggered/striped 4-player tables. A metric called Estimated Rounds Until Victory (ERUV) is calculated at the game's conclusion, which looks at how many monuments a player still needed to buy, their costs, the player's coins, and the expected coins-per-turn the player's cards were generating; pairwise wins & losses are assessed on ERUV scores, and then Glicko scores are calculated. The `--records` and `--stats` command-line options allow per-game JSONL summaries and statistics, respectively. 
+
+If you want to write your own bots, the `Player()` class is subclassed into `Human()` and `Bot()`. Because `Bot()` is already a working class, any methods you don't implement on e.g. `class CustomBot(Bot)` will be inherited from the parent class. There are lots of methods in `bots.py` and `strategy.py` to help your bot calculate its next move. 
 
 ## Future features
 
