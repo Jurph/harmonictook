@@ -21,6 +21,7 @@
 The game runs in native python (3.7 and newer) with no installation required for plain monochrome text mode. Type `harmonictook.py` to run the game in a terminal window. You can also run `tournament.py` to test new bot strategies against each other, including a `--swiss` CLI flag that runs a seeded Swiss tournament to really find out which bot strategy is best. The game also includes a more colorful terminal version available with `harmonictook.py --mode color` that requires a few imports first (see **Installation** below). 
 
 ![Screenshot of v0.9.2 gameplay](docs/gameplay.PNG)
+*Screenshot of v0.9.2 gameplay* 
 
 ## Installation
 
