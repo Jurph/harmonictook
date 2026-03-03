@@ -1120,8 +1120,8 @@ class Game:
             self.last_roll = dieroll
             emit(Event(type="roll", player=player.name, value=dieroll, is_doubles=isDoubles))
 
-        # Brief pause after roll so bot turns are readable
-        if isinstance(player, Bot):
+        # Brief pause after roll so bot turns are readable (skip in headless/tournament runs)
+        if isinstance(player, Bot) and not isinstance(display, NullDisplay):
             time.sleep(0.5)
 
         # Card triggers in correct color order: Red → Blue → Green → Purple
@@ -1148,8 +1148,8 @@ class Game:
         elif action == 'pass':
             emit(Event(type="pass", player=player.name))
 
-        # Brief pause after purchase/pass so bot turns are readable
-        if isinstance(player, Bot):
+        # Brief pause after purchase/pass so bot turns are readable (skip in headless/tournament runs)
+        if isinstance(player, Bot) and not isinstance(display, NullDisplay):
             time.sleep(0.5)
 
         self.history.append(GameState(
