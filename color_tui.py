@@ -56,7 +56,7 @@ class EventLog(RichLog):
 
     DEFAULT_CSS = """
     EventLog {
-        height: 1fr;
+        height: 7;
         border: solid $primary-darken-1;
         margin-top: 0;
         padding: 0 1;
@@ -81,7 +81,7 @@ class IOPanel(Static):
 # ── Placeholder data ──────────────────────────────────────────────────────────
 
 _PLACEHOLDER_MARKET = (
-    "Mkt:\n"
+    "Market\n"
     "[blue]   1[/blue] Wheat Field            [blue]▓▓▓▓▓▓[/blue]    $1  │  "
     "[green]   4[/green] Convenience Store      [green]▓▓▓▓▓▓[/green]    $2  │  "
     "[green]   7[/green] Cheese Factory         [green]▓▓▓▓▓▓[/green]    $5 \n"
@@ -268,7 +268,7 @@ def _market_markup(game: Game) -> str:
         ]
         rows.append(" │ ".join(row_cells))
 
-    return "Mkt:\n" + "\n".join(rows)
+    return "Market\n" + "\n".join(rows)
 
 
 def _event_to_str(event: Event) -> str | None:  # noqa: C901

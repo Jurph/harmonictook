@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import random
+import time
 import utility
 import argparse
 from functools import total_ordering
@@ -1119,6 +1120,10 @@ class Game:
             self.last_roll = dieroll
             emit(Event(type="roll", player=player.name, value=dieroll, is_doubles=isDoubles))
 
+        # Brief pause after roll so bot turns are readable
+        if isinstance(player, Bot):
+            time.sleep(0.5)
+
         # Card triggers in correct color order: Red → Blue → Green → Purple
         for card_color in [Red, Blue, Green, Stadium, TVStation, BusinessCenter]:
             for person in self.players:
@@ -1142,6 +1147,10 @@ class Game:
                     emit(buy_event)
         elif action == 'pass':
             emit(Event(type="pass", player=player.name))
+
+        # Brief pause after purchase/pass so bot turns are readable
+        if isinstance(player, Bot):
+            time.sleep(0.5)
 
         self.history.append(GameState(
             turn_number=self.turn_number,

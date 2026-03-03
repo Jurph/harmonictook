@@ -307,7 +307,7 @@ class TestHarmonicTookAppUpdateState(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             content = self._panel_content(app.query_one(MarketPanel))
             self.assertIn("Wheat Field", content)
-            self.assertIn("Mkt", content)
+            self.assertIn("Market", content)
 
     async def test_update_state_sets_player_names(self):
         """Each PlayerPanel contains the corresponding player's name."""

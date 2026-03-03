@@ -77,15 +77,14 @@ Machi Koro -- I mean, uh, _harmonictook_ -- has a lot of luck involved. Even the
 ## Future features
 
 - Display
-  - Create a Display() class [partial] 
-  - Add ANSI-style colored text (orange, red, green, blue, purple) for rich terminal display
-  - Add a no-foolin' GUI 
+  - Add a no-foolin' GUI with mouse & keyboard interaction 
+  - Add assets, maybe hand-drawn? 
 
 - Gameplay 
   - Consider limited-market variant where only 8 or 10 unique cards are available (until a pile is depleted)
   - Cheat codes (?!) 
   - Persistent local high scores and Elo 
-  - Allow humans to compete in Tournament Mode 
+  - Allow humans to compete in different Tournaments (2-player bracket vs. Easy, 4-player Swiss vs. Medium, etc.)
 
 # The Rules
 
@@ -106,9 +105,10 @@ of their landmark buildings wins immediately.
 
 ## Shared components
 
-- The market starts with 6 of each red, green, blue, and purple card type 
+- The market starts with 6 of each red, green, blue, and purple card type  
+- Each player may buy only one of each Landmark (orange); these are not taken from a shared market 
 - All players buy from the same market 
-
+  
 ---
 
 ## Turn Structure
@@ -117,15 +117,11 @@ Each turn has three phases, in order:
 
 ### 1. Roll
 
-The active player rolls one die (or may choose to roll two dice if they own 
-the Train Station). The total is compared against every establishment in every
-player's city.
+The active player rolls one die (or may choose to roll two dice if they own  the Train Station). The total is compared against every establishment in every player's city. Three of the Landmarks also change how the **Roll** phase works: 
 
-**Train Station:** If the active player owns the Train Station, they may 
-choose to roll either one or two dice for their Roll phase. 
-
-**Radio Tower:** If the active player owns the Radio Tower, they may
-choose to re-roll once after seeing the result.
+- **Train Station:** If the active player owns the Train Station, they may  choose to roll either one or two dice for their Roll phase, unlocking the possibility of rolling numbers larger than 6. 
+- **Amusement Park:** If the active player owns the Amusement Park, they get another turn after rolling doubles.
+- **Radio Tower:** If the active player owns the Radio Tower, they may choose to re-roll once after seeing the result.
 
 ### 2. Resolve Establishments
 
@@ -138,6 +134,7 @@ Within each color, cards are resolved player by player.
 | Blue   | Any player's roll   | Bank → card owner                                |
 | Green  | Active player's roll only | Bank → active player (some multiply by card count) |
 | Purple | Active player's roll only | Special effects (see below)                |
+|--------|---------------------|--------------------------------------------------|
 
 
 **Purple (major establishment) effects:**
@@ -145,13 +142,13 @@ Within each color, cards are resolved player by player.
 - **Stadium** — Collects 2 coins from every other player.
 - **TV Station** — Steals 5 coins from one chosen player.
 - **Business Center** — Swaps one establishment card with another
-  player. (Bot players receive 5 coins instead.)
+  player.  
 
 Each player may own at most one copy of each purple establishment.
 
-**Shopping Mall modifier:** A player who has built the Shopping Mall
+**Shopping Mall:** A player who has built the Shopping Mall
 landmark receives +1 coin from their own Cafés, Family Restaurants, and
-Convenience Stores.
+Convenience Stores. 
 
 ### 3. Build
 
@@ -229,4 +226,4 @@ immediately.
 
 ## Example Turn: 
 
-[TODO]
+> *Alice owns two Wheat Fields, a Ranch, and two Bakeries, and currently has 2 coins. Her competitors also own two Wheat Fields and a Bakery. One opponent, Bob, owns a Café. She rolls a 3. The Café activates first, so Alice gives Bob 1 coin. There are no blue cards that activate on a 3. Green cards activate next: Alice's Bakeries both activate on a 3, each paying her 1 coin from the bank. There are no purple cards that activate on a 3. Alice now has 3 coins, and can buy any property costing 3 or less. She eyes the Convenience Store and the Forest. Remembering that later in the game players roll 2d6 instead of 1d6, she opts for the Forest, since rolling a 5 with two dice is slightly more common than rolling a 4 with two dice.* 
