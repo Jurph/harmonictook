@@ -251,13 +251,13 @@ class TestCardsAndLandmarksMarkup(unittest.TestCase):
         self.assertEqual(result.count("●"), 0)
 
     def test_owning_train_station_fills_first_circle(self):
-        """hasTrainStation=True produces exactly one ● in the first slot."""
+        """hasTrainStation=True produces exactly one ● and it appears before any ○."""
         game = Game(players=2)
         player = game.players[0]
         player.hasTrainStation = True
         result = self.landmarks_markup(player)
         self.assertEqual(result.count("●"), 1)
-        self.assertTrue(result.startswith("●"))
+        self.assertLess(result.index("●"), result.index("○"))
 
     def test_all_landmarks_gives_all_filled_circles(self):
         """A player with all four landmarks gets four ● symbols."""
