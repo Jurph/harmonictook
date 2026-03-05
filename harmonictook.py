@@ -347,6 +347,16 @@ class Bot(Player):
         return (card_to_give, card_to_take)
 
 
+class PassBot(Bot):
+    """Bot that always passes. Useful in tests so the opponent always wins and games terminate predictably."""
+
+    def chooseAction(self, availableCards: Store) -> str:
+        return "pass"
+
+    def chooseCard(self, options: list[Card], game: Game | None = None) -> str | None:
+        return None
+
+
 def get_die_roller(players: list[Player]) -> Player:
     """Return the player whose isrollingdice flag is True, or raise ValueError if none."""
     for person in players:
@@ -759,21 +769,25 @@ def setPlayers(players: int | None = None, bots: int = 0, humans: int = 0) -> li
             playerlist.append(ThoughtfulBot(name=f"Robo{i}"))
         return playerlist
     elif players is None:
-        _PLAYER_OPTIONS = [
+        _BASE_OPTIONS = [
             "Human",
             "Hard",
             "Medium",
             "Easy",
             "Surprise Me!",
         ]
-        moreplayers = True
-        while moreplayers:
-            choice = utility.userChoice(_PLAYER_OPTIONS)
+        while True:
+            options = list(_BASE_OPTIONS)
+            if len(playerlist) >= 2:
+                options.append("No more players")
+            choice = utility.userChoice(options)
+            if choice == "No more players":
+                break
             if choice == "Human":
                 playername = input("What's the human's name? ")
                 playerlist.append(Human(name=str(playername)))
             else:
-                playername = input("What's the bot's name? ")
+                playername = input("What's the bot's name? (blank to auto-generate) ").strip()
                 if "Hard" in choice:
                     cls = random.choices([FromageBot, ImpatientBot], weights=[50, 50])[0]
                 elif "Medium" in choice:
@@ -783,18 +797,9 @@ def setPlayers(players: int | None = None, bots: int = 0, humans: int = 0) -> li
                 else:  # Surprise me
                     cls = random.choice([ThoughtfulBot, MarathonBot, ImpatientBot,
                                          EVBot, CoverageBot, FromageBot, KinematicBot])
-                playerlist.append(cls(name=str(playername)))
+                playerlist.append(cls(name=playername))
             if len(playerlist) == 4:
                 break
-            elif len(playerlist) >= 2:
-                yesorno = input("Add another player? ([Y]es / [N]o) ")
-                if "y" in yesorno.lower():
-                    pass
-                elif "n" in yesorno.lower():
-                    moreplayers = False
-                    break
-                else:
-                    print("Sorry, I couldn't find a Y or N in your answer. ")
         return playerlist
     elif isinstance(players, int):
         if players < 2:
@@ -1205,7 +1210,13 @@ def main():
     parser.add_argument('--humans', type=int, default=0, metavar='N', help='number of human players (skips interactive setup)')
     parser.add_argument('--mode', choices=['text', 'color', 'gui'], default='text',
                         help='display mode: text (default), color (full-screen Textual TUI), gui (not yet supported)')
+    parser.add_argument('--seed', type=int, default=None, metavar='N',
+                        help='random seed for reproducible dice and bot choices')
     args = parser.parse_args()
+
+    if args.seed is not None:
+        random.seed(args.seed)
+
     if args.mode == 'color':
         try:
             from color_tui import ColorTUIDisplay, HarmonicTookApp  # noqa: PLC0415

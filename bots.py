@@ -306,7 +306,7 @@ class ImpatientBot(Bot):
 
     # Replace Bot name list with cheese names for auto-naming when name is ''.
     NAME_OPTIONS: list[str] = [
-        "T2", "T-1000", "ED-209", "IG-88", "SHODAN", "WOPR", "HAL 9000", "Mother", "Colossus",
+        "T-800", "T-1000", "ED-209", "IG-88", "SHODAN", "WOPR", "HAL 9000", "Mother", "Colossus",
     ]
 
     def name_options(self) -> list[str]:

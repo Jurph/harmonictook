@@ -422,7 +422,12 @@ def main() -> None:
                         help="append per-game stats (turns, n, scores) to FILE")
     parser.add_argument("--records", metavar="FILE", default=None,
                         help="append per-game JSONL records (decks, ERUV, bot type) to FILE")
+    parser.add_argument("--seed", type=int, default=None, metavar="N",
+                        help="random seed for reproducible tournament runs")
     args = parser.parse_args()
+
+    if args.seed is not None:
+        random.seed(args.seed)
 
     entries = _default_swiss_field()
     run_swiss_tournament(entries, n_days=args.days, stats_path=args.stats, records_path=args.records)

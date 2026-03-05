@@ -2,13 +2,19 @@
 # -*- coding: UTF-8 -*-
 # tests/test_tournament.py — Tests for the Swiss tournament harness
 
+import json
+import os
+import random
+import tempfile
 import unittest
 
-from harmonictook import Bot
-from bots import EVBot
+from harmonictook import Bot, PassBot
+from bots import EVBot, ThoughtfulBot
 from tournament import (
     make_evbot,
-    TournamentPlayer, _seeded_tables, _striped_tables, _avoid_pair_repeats,
+    TournamentPlayer, RoundResult,
+    _seeded_tables, _striped_tables, _avoid_pair_repeats,
+    _run_table, _default_swiss_field,
 )
 
 
@@ -145,6 +151,78 @@ class TestAvoidPairRepeats(unittest.TestCase):
         result = _avoid_pair_repeats(tables, recent)
         self.assertEqual(result[0][0].label, "A")
         self.assertEqual(result[0][1].label, "B")
+
+
+class TestRunTable(unittest.TestCase):
+    """_run_table: run one game, update Glicko, return RoundResult. PassBot always loses."""
+
+    def test_run_table_completes_and_winner_beats_passbot(self):
+        """With PassBot vs ThoughtfulBot, game completes; ThoughtfulBot wins and gains rating."""
+        random.seed(42)
+        players = [
+            TournamentPlayer(label="Pass", player_factory=PassBot),
+            TournamentPlayer(label="Think", player_factory=ThoughtfulBot),
+        ]
+        result = _run_table(players)
+        self.assertIsInstance(result, RoundResult)
+        self.assertEqual(len(result.table), 2)
+        self.assertEqual(result.table[0], "Think", "ThoughtfulBot should win vs PassBot")
+        self.assertEqual(result.table[1], "Pass")
+        self.assertIn("Pass", result.finish_scores)
+        self.assertIn("Think", result.finish_scores)
+        self.assertGreater(result.finish_scores["Think"], result.finish_scores["Pass"])
+        # Winner gains rating, loser loses
+        self.assertGreater(players[1].rating, 1500.0)
+        self.assertLess(players[0].rating, 1500.0)
+
+
+class TestWriteGameRecord(unittest.TestCase):
+    """_write_game_record: JSONL line has expected keys and winner flag."""
+
+    def test_record_written_with_winner_and_players(self):
+        """After _run_table with records_path, file contains one JSON object with players and winner."""
+        random.seed(99)
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            path = f.name
+        try:
+            players = [
+                TournamentPlayer(label="P", player_factory=PassBot),
+                TournamentPlayer(label="T", player_factory=ThoughtfulBot),
+            ]
+            _run_table(players, records_path=path)
+            with open(path, encoding="utf-8") as f:
+                lines = f.readlines()
+            self.assertEqual(len(lines), 1)
+            record = json.loads(lines[0])
+            self.assertIn("turns", record)
+            self.assertIn("n_players", record)
+            self.assertIn("players", record)
+            self.assertEqual(len(record["players"]), 2)
+            labels = {p["label"] for p in record["players"]}
+            self.assertEqual(labels, {"P", "T"})
+            winner_entry = next(p for p in record["players"] if p["winner"])
+            self.assertEqual(winner_entry["label"], "T")
+        finally:
+            os.unlink(path)
+
+
+class TestDefaultSwissField(unittest.TestCase):
+    """_default_swiss_field: 24 players, 3 per family, correct factory types."""
+
+    def test_returns_24_entries(self):
+        field = _default_swiss_field()
+        self.assertEqual(len(field), 24)
+
+    def test_first_three_are_random_bot_family(self):
+        field = _default_swiss_field()
+        for i in range(3):
+            self.assertIs(field[i].player_factory, Bot, f"Entry {i} should be Bot")
+
+    def test_thoughtful_triple_has_thoughtfulbot_factory(self):
+        field = _default_swiss_field()
+        # Tim, Tay, Thea are indices 3, 4, 5
+        for i in range(3, 6):
+            self.assertIs(field[i].player_factory, ThoughtfulBot)
 
 
 if __name__ == "__main__":
