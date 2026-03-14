@@ -136,7 +136,6 @@ Within each color, cards are resolved player by player.
 | Blue   | Any player's roll   | Bank → card owner                                |
 | Green  | Active player's roll only | Bank → active player (some multiply by card count) |
 | Purple | Active player's roll only | Special effects (see below)                |
-|--------|---------------------|--------------------------------------------------|
 
 
 **Purple (major establishment) effects:**
