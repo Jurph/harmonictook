@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 import random
 
-from harmonictook import Blue, Bot, Card, Game, Green, Stadium, TVStation, UpgradeCard
+from harmonictook import Bot, Card, Game, UpgradeCard
 from strategy import (
     delta_coverage,
     delta_ev,
@@ -25,39 +25,10 @@ from strategy import (
     _landmark_cost_remaining,
     _n_landmarks_remaining,
     _own_turn_coverage,
+    _own_turn_income,
     _prob_win_in_n_rounds,
 )
 
-
-def _roll_income(player: Bot, roll: int) -> int:
-    """Coin income for player on their own turn when the die total is roll.
-
-    Covers Blue, Green (including factory multiplication and Shopping Mall bonus),
-    Stadium (payout * 1, conservative floor — exact multiplier requires player list),
-    and TVStation (assumes max 5-coin steal). Used by reroll heuristics; approximations
-    are acceptable as long as profitable rolls register as non-zero.
-    """
-    total = 0
-    for card in player.deck.deck:
-        if roll not in card.hitsOn:
-            continue
-        if isinstance(card, Blue):
-            total += card.payout
-        elif isinstance(card, Green):
-            if getattr(card, "multiplies", None) is not None:
-                total += card.payout * _count_category(player, card.multiplies)
-            else:
-                payout = card.payout
-                if player.hasShoppingMall and card.name == "Convenience Store":
-                    payout += 1
-                total += payout
-        elif isinstance(card, Stadium):
-            # Exact income = payout × n_opponents, unknown here; use payout as a floor.
-            total += card.payout
-        elif isinstance(card, TVStation):
-            # Steal up to 5; assume opponents have coins for reroll decision purposes.
-            total += 5
-    return total
 
 
 def _with_card_bought(player: Bot, card: Card, fn) -> float:
@@ -304,18 +275,9 @@ class ImpatientBot(Bot):
     chooseCard and chooseBusinessCenterSwap use game.players when available.
     """
 
-    # Replace Bot name list with cheese names for auto-naming when name is ''.
     NAME_OPTIONS: list[str] = [
         "T-800", "T-1000", "ED-209", "IG-88", "SHODAN", "WOPR", "HAL 9000", "Mother", "Colossus",
     ]
-
-    def name_options(self) -> list[str]:
-        return list(self.NAME_OPTIONS)
-    
-    def __init__(self, name: str = "") -> None:
-        super().__init__(name=name)
-        if self.name == "":
-            self.name = random.choice(self.name_options())
 
     # ------------------------------------------------------------------
     #
@@ -325,7 +287,7 @@ class ImpatientBot(Bot):
     def chooseDice(self, players: list | None = None) -> int:
         return _dice_by_ev(self, players or [self])
 
-    def chooseReroll(self, last_roll: int | None = None) -> bool:
+    def chooseReroll(self, last_roll: int | None = None, players: list | None = None) -> bool:
         """Reroll if this roll's income falls in the bottom third of all possible outcomes.
 
         Builds an income table for rolls 1-12, sorts it, and rerolls if the current
@@ -333,9 +295,10 @@ class ImpatientBot(Bot):
         """
         if not self.hasRadioTower or last_roll is None:
             return False
-        incomes = sorted(self._own_income_for_roll(x) for x in range(1, 13))
+        use_players = players or [self]
+        incomes = sorted(_own_turn_income(self, use_players, x) for x in range(1, 13))
         threshold = incomes[3]  # top of the bottom third
-        return self._own_income_for_roll(last_roll) <= threshold
+        return _own_turn_income(self, use_players, last_roll) <= threshold
 
     def chooseAction(self, availableCards) -> str:
         """Buy a landmark if affordable; buy income card only if it reduces ERUV; else pass.
@@ -396,10 +359,6 @@ class ImpatientBot(Bot):
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _own_income_for_roll(self, roll: int) -> int:
-        """Coin income on own turn for a given roll. Delegates to module-level _roll_income."""
-        return _roll_income(self, roll)
-
     def _tuv_with(self, players: list) -> float:
         """ERUV from a players list. Delegates to module-level _eruv_for."""
         return _eruv_for(self, players)
@@ -434,14 +393,10 @@ class FromageBot(Bot):
     their cap; if everything is at cap, buy anything available.
     """
 
-    # Replace Bot name list with cheese names for auto-naming when name is ''.
     NAME_OPTIONS: list[str] = [
         "Brie", "Cheddar", "Roquefort", "Stilton", "Havarti", "Manchego",
         "Halloumi", "Emmental", "Reblochon", "Taleggio",
     ]
-
-    def name_options(self) -> list[str]:
-        return list(self.NAME_OPTIONS)
 
     #: (card_name, max_copies): walked in order each turn.
     PRIORITY: list[tuple[str, int]] = [
@@ -544,20 +499,19 @@ class MarathonBot(Bot):
             self.hasTrainStation = old
         return 2 if p2 >= p1 else 1
 
-    def chooseReroll(self, last_roll: int | None = None) -> bool:
+    def chooseReroll(self, last_roll: int | None = None, players: list | None = None) -> bool:
         """Two-regime reroll: sprint if N=1 (reroll unless income covers deficit),
         marathon if N>1 (reroll if income falls in the bottom third of outcomes).
-
-        N is approximated from own ERUV using [self] as players.
         """
         if not self.hasRadioTower or last_roll is None:
             return False
-        income = _roll_income(self, last_roll)
-        n = self._target_n([self])
+        use_players = players or [self]
+        income = _own_turn_income(self, use_players, last_roll)
+        n = self._target_n(use_players)
         if n == 1:
             deficit = max(0, _landmark_cost_remaining(self) - self.bank)
             return income < deficit
-        incomes = sorted(_roll_income(self, x) for x in range(1, 13))
+        incomes = sorted(_own_turn_income(self, use_players, x) for x in range(1, 13))
         return income <= incomes[3]  # bottom third of 12 outcomes
 
     def chooseAction(self, availableCards) -> str:

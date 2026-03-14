@@ -108,7 +108,7 @@ class Player(object):
         """Return 2 if Train Station is owned, otherwise 1."""
         return 2 if self.hasTrainStation else 1
 
-    def chooseReroll(self, last_roll: int | None = None) -> bool:
+    def chooseReroll(self, last_roll: int | None = None, players: list | None = None) -> bool:
         """Return True if the player wants to use the Radio Tower to re-roll; base always returns False."""
         return False
 
@@ -250,7 +250,7 @@ class Human(Player):
         )
         return choice[0]
 
-    def chooseReroll(self, last_roll: int | None = None) -> bool:
+    def chooseReroll(self, last_roll: int | None = None, players: list | None = None) -> bool:
         """Prompt the human to use the Radio Tower re-roll if they own it."""
         if not self.hasRadioTower:
             return False
@@ -284,23 +284,23 @@ class Human(Player):
         return (card_to_give, card_to_take)
 
 class Bot(Player):
-    """Simple automated player that buys affordable cards at random."""
+    """Simple automated player that buys affordable cards at random.
 
-    # Master list for auto-naming when name is ''; subclasses may override name_options() to extend or replace.
+    To set a custom list of auto-generated names, override NAME_OPTIONS in your
+    subclass; these will supersede the default bot names via normal class variable
+    inheritance (MRO). See FromageBot for a working example.
+    """
+
     NAME_OPTIONS: list[str] = [
         "Marvin", "Bender", "Gort", "Robbie", "Ash", "Bishop", "David", "Roy", "Pris",
         "Ava", "Sonny", "Chappie", "Baymax", "Sharon", "D'Anna", "Tory", "Ellen", "Leoben", "Simon", "Cavil", "Galen",
-        "Dolores", "Bernard", "Maeve", "Charlotte", "Rachael", "Leon", "Zhora", 
+        "Dolores", "Bernard", "Maeve", "Charlotte", "Rachael", "Leon", "Zhora",
     ]
 
     def __init__(self, name: str = "") -> None:
         super().__init__(name=name)
-        if self.name == "":
-            self.name = random.choice(self.name_options())
-
-    def name_options(self) -> list[str]:
-        """Return the list of names used for auto-naming when name is ''. Subclasses may override to extend or replace."""
-        return list(self.NAME_OPTIONS)
+        if not self.name:
+            self.name = random.choice(self.NAME_OPTIONS)
 
     def chooseAction(self, availableCards: Store) -> str:
         """Return 'buy' if any affordable card is available, otherwise 'pass'."""
@@ -314,7 +314,7 @@ class Bot(Player):
             return None
         return random.choice(options).name
 
-    def chooseReroll(self, last_roll: int | None = None) -> bool:
+    def chooseReroll(self, last_roll: int | None = None, players: list | None = None) -> bool:
         """Return True if the bot owns Radio Tower and the last roll was below 5."""
         return self.hasRadioTower and last_roll is not None and last_roll < 5
 
@@ -1119,7 +1119,7 @@ class Game:
         emit(Event(type="roll", player=player.name, value=dieroll, is_doubles=isDoubles))
 
         # Radio Tower re-roll option
-        if player.chooseReroll(dieroll):
+        if player.chooseReroll(dieroll, self.players):
             emit(Event(type="reroll", player=player.name))
             dieroll, isDoubles = player.dieroll(self.players)
             self.last_roll = dieroll

@@ -7,9 +7,10 @@ from unittest.mock import patch
 from harmonictook import Game, Blue, Green, Red, Stadium, TVStation, BusinessCenter, UpgradeCard
 from bots import (
     ThoughtfulBot, EVBot, ImpatientBot, MarathonBot,
-    _roll_income, _with_card_bought, _with_card_appended, _with_card_removed,
+    _with_card_bought, _with_card_appended, _with_card_removed,
     _card_variance, _kinematic_n,
 )
+from strategy import _own_turn_income
 
 
 class TestBots(unittest.TestCase):
@@ -328,16 +329,12 @@ class TestKinematicNEdgeCases(unittest.TestCase):
         self.assertLessEqual(n2, n0)
 
 
-class TestRollIncomeLogicBugs(unittest.TestCase):
-    """Tests that expose known gaps in _roll_income and _own_income_for_roll.
+class TestOwnTurnIncomeCorrectness(unittest.TestCase):
+    """Verify _own_turn_income handles Stadium, factory multipliers, and Shopping Mall.
 
-    Both helpers only check isinstance(card, (Blue, Green)), silently ignoring:
-      - Stadium / TVStation / BusinessCenter (Purple): their own-turn income is real.
-      - Factory multiplication: Cheese Factory payout = base × category_count, not base.
-      - Shopping Mall bonus: +1 on Convenience Store is not reflected.
-
-    These gaps cause ImpatientBot and MarathonBot to make incorrect reroll decisions.
-    Each test asserts the CORRECT expected behaviour; failures reveal the bug.
+    These cases were previously broken by the duplicate _roll_income helper in bots.py,
+    which ignored opponent count for Stadium, factory multiplication, and Shopping Mall.
+    Now that bots use _own_turn_income from strategy.py, all three work correctly.
     """
 
     def setUp(self):
@@ -345,54 +342,40 @@ class TestRollIncomeLogicBugs(unittest.TestCase):
         self.bot = self.game.players[0]
         self.bot.deposit(50)
 
-    def test_roll_income_ignores_stadium(self):
-        """_roll_income returns 0 on roll 6 even when Stadium would fire and collect coins.
-
-        Stadium fires on roll 6 and collects card.payout from each other player.
-        With 3 players, the roller earns at least 2 coins (2 * 1 = 2 with default payout).
-        The helper must return > 0 to let bots make correct reroll decisions.
-        """
+    def test_stadium_income_counts_opponents(self):
+        """Stadium on roll 6 earns payout × (n_players - 1)."""
         self.bot.deck.deck.clear()
         stadium = Stadium()
         stadium.owner = self.bot
         self.bot.deck.append(stadium)
-        income = _roll_income(self.bot, 6)
-        self.assertGreater(income, 0,
-            "_roll_income must count Stadium income on roll 6 — currently returns 0 (bug)")
+        income = _own_turn_income(self.bot, self.game.players, 6)
+        self.assertEqual(income, 4,
+            "Stadium with 3 players should earn 2 × 2 opponents = 4")
 
     def test_impatient_bot_does_not_reroll_stadium_roll(self):
-        """ImpatientBot should not reroll roll 6 when Stadium fires.
-
-        _own_income_for_roll ignores Stadium (Purple), so it computes income=0.
-        The threshold is also 0 (all other rolls give 0 too), triggering a reroll.
-        Correct behaviour: don't reroll a roll that collects Stadium coins.
-        """
+        """ImpatientBot should not reroll roll 6 when Stadium fires."""
         bot = ImpatientBot(name="Impatient")
         bot.hasRadioTower = True
         bot.deck.deck.clear()
         stadium = Stadium()
         stadium.owner = bot
         bot.deck.append(stadium)
-        self.assertFalse(bot.chooseReroll(6),
-            "ImpatientBot must not reroll roll 6 when Stadium fires — currently does (bug)")
+        self.assertFalse(bot.chooseReroll(6, self.game.players),
+            "ImpatientBot must not reroll roll 6 when Stadium fires")
 
     def test_marathon_bot_does_not_reroll_stadium_roll(self):
-        """MarathonBot has the same Stadium-ignoring gap via the module-level _roll_income."""
+        """MarathonBot should not reroll roll 6 when Stadium fires."""
         bot = MarathonBot(name="Marathon")
         bot.hasRadioTower = True
         bot.deck.deck.clear()
         stadium = Stadium()
         stadium.owner = bot
         bot.deck.append(stadium)
-        self.assertFalse(bot.chooseReroll(6),
-            "MarathonBot must not reroll roll 6 when Stadium fires — currently does (bug)")
+        self.assertFalse(bot.chooseReroll(6, self.game.players),
+            "MarathonBot must not reroll roll 6 when Stadium fires")
 
-    def test_roll_income_ignores_factory_multiplier(self):
-        """_roll_income returns base Cheese Factory payout (3), not the multiplied amount.
-
-        With 4 Ranches owned, a roll of 7 should pay 3 × 4 = 12 coins.
-        The helper sums card.payout directly: returns 3, not 12.
-        """
+    def test_factory_multiplier_applied(self):
+        """Cheese Factory with 4 Ranches earns 3 × 4 = 12 on roll 7."""
         self.bot.deck.deck.clear()
         for _ in range(4):
             r = Blue("Ranch", 2, 1, 1, [2])
@@ -401,24 +384,20 @@ class TestRollIncomeLogicBugs(unittest.TestCase):
         cheese = Green("Cheese Factory", 6, 5, 3, [7], 2)
         cheese.owner = self.bot
         self.bot.deck.append(cheese)
-        income = _roll_income(self.bot, 7)
+        income = _own_turn_income(self.bot, self.game.players, 7)
         self.assertEqual(income, 12,
-            f"_roll_income returned {income}; expected 12 (3 payout × 4 Ranches) — factory multiplier is missing (bug)")
+            "Cheese Factory with 4 Ranches should earn 3 × 4 = 12")
 
-    def test_roll_income_ignores_shopping_mall_bonus(self):
-        """_roll_income ignores Shopping Mall's +1 bonus on Convenience Store.
-
-        A player with Shopping Mall and Convenience Store earns 3+1=4 on roll 4.
-        The helper returns 3 (base payout), not 4.
-        """
+    def test_shopping_mall_bonus_applied(self):
+        """Convenience Store with Shopping Mall earns 3 + 1 = 4 on roll 4."""
         self.bot.deck.deck.clear()
         self.bot.hasShoppingMall = True
         cs = Green("Convenience Store", 3, 2, 3, [4])
         cs.owner = self.bot
         self.bot.deck.append(cs)
-        income = _roll_income(self.bot, 4)
+        income = _own_turn_income(self.bot, self.game.players, 4)
         self.assertEqual(income, 4,
-            f"_roll_income returned {income}; expected 4 (3 + Shopping Mall bonus) — bonus is ignored (bug)")
+            "Convenience Store with Shopping Mall should earn 3 + 1 = 4")
 
 
 class TestThoughtfulBotPriorityBugs(unittest.TestCase):
@@ -921,31 +900,31 @@ class TestBCSwapEmptyLists(unittest.TestCase):
         self.assertIsNone(bot.chooseCard([]))
 
 
-class TestRollIncomeTVStation(unittest.TestCase):
-    """_roll_income TVStation branch — the 'steal up to 5' approximation."""
+class TestOwnTurnIncomeTVStation(unittest.TestCase):
+    """_own_turn_income TVStation branch — steal min(5, max opponent bank)."""
 
-    def test_roll_income_counts_tvstation(self):
-        """TVStation on roll 6 contributes 5 to _roll_income (assumed max steal)."""
-        from bots import _roll_income
-        from harmonictook import TVStation
-        bot = ImpatientBot(name="I")
+    def test_tvstation_income_with_opponents(self):
+        """TVStation on roll 6 steals min(5, max_opponent_bank)."""
+        game = Game(players=2)
+        bot = game.players[0]
         bot.deck.deck.clear()
         tv = TVStation()
         tv.owner = bot
         bot.deck.append(tv)
-        income = _roll_income(bot, 6)
-        self.assertEqual(income, 5)
+        income = _own_turn_income(bot, game.players, 6)
+        self.assertEqual(income, min(5, game.players[1].bank))
 
     def test_impatient_does_not_reroll_tvstation_roll(self):
         """ImpatientBot should not reroll a 6 that fires TVStation."""
-        from harmonictook import TVStation
+        game = Game(players=2)
         bot = ImpatientBot(name="I")
         bot.hasRadioTower = True
         bot.deck.deck.clear()
         tv = TVStation()
         tv.owner = bot
         bot.deck.append(tv)
-        self.assertFalse(bot.chooseReroll(6),
+        game.players[0] = bot
+        self.assertFalse(bot.chooseReroll(6, game.players),
             "TVStation income on roll 6 should prevent a reroll")
 
 
